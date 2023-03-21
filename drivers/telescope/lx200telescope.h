@@ -31,7 +31,7 @@
 #include "indifocuserinterface.h"
 #include "inditelescope.h"
 
-class LX200Telescope : public INDI::Telescope, public INDI::GuiderInterface, public INDI::FocuserInterface
+class LX200Telescope : public INDI::Telescope
 {
     public:
         LX200Telescope();
@@ -169,6 +169,8 @@ class LX200Telescope : public INDI::Telescope, public INDI::GuiderInterface, pub
         int timeFormat = -1;
         int currentSiteNum {0};
         int trackingMode {0};
+
+        INDI::GuiderInterface, public INDI::FocuserInterface
 
         bool sendTimeOnStartup = true, sendLocationOnStartup = true;
         uint8_t DBG_SCOPE {0};

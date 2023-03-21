@@ -96,6 +96,11 @@ class AbstractInterface
             return false;
         }
 
+        const char *getDeviceName()
+        {
+            return m_DefaultDevice->getDeviceName();
+        }
+
         DefaultDevice *m_DefaultDevice {nullptr};
 };
 }

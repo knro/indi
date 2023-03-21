@@ -21,6 +21,7 @@
 #pragma once
 
 #include "indibase.h"
+#include "abstractinterface.h"
 
 #include <stdint.h>
 
@@ -60,7 +61,7 @@ namespace INDI
    of a focuser interface within a CCD driver.
 \author Jasem Mutlaq
 */
-class FocuserInterface
+class FocuserInterface : public AbstractInterface
 {
     public:
         enum FocusDirection
@@ -162,19 +163,19 @@ class FocuserInterface
          * initProperties() of your primary device
          * \param groupName Group or tab name to be used to define focuser properties.
          */
-        void initProperties(const char * groupName);
+        void initProperties(const char * group) override;
 
         /**
          * @brief updateProperties Define or Delete Rotator properties based on the connection status of the base device
          * @return True if successful, false otherwise.
          */
-        bool updateProperties();
+        bool updateProperties() override;
 
         /** \brief Process focus number properties */
-        bool processNumber(const char * dev, const char * name, double values[], char * names[], int n);
+        bool ISNewNumber(const char * dev, const char * name, double values[], char * names[], int n) override;
 
         /** \brief Process focus switch properties */
-        bool processSwitch(const char * dev, const char * name, ISState * states, char * names[], int n);
+        bool ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n) override;
 
         /**
          * @brief SetFocuserSpeed Set Focuser speed
@@ -262,7 +263,7 @@ class FocuserInterface
          * @param fp pointer to config file
          * @return Always return true
          */
-        bool saveConfigItems(FILE * fp);
+        bool saveConfigItems(FILE * fp) override;
 
         // Focuser Speed (if variable speeds are supported)
         INumberVectorProperty FocusSpeedNP;
@@ -313,7 +314,5 @@ class FocuserInterface
         uint32_t capability;
 
         double lastTimerValue = { 0 };
-
-        DefaultDevice * m_defaultDevice { nullptr };
 };
 }

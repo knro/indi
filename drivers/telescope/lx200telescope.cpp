@@ -703,7 +703,7 @@ bool LX200Telescope::ISNewNumber(const char *dev, const char *name, double value
     {
         if (strstr(name, "FOCUS_"))
         {
-            return FI::processNumber(dev, name, values, names, n);
+            return FI::ISNewNumber(dev, name, values, names, n);
         }
 
         // Update Frequency
@@ -727,10 +727,10 @@ bool LX200Telescope::ISNewNumber(const char *dev, const char *name, double value
                 //Normal Tracking Frequency
                 if (!isSimulation() && setTrackFreq(PortFD, values[0]) < 0)
 
-                    LOGF_DEBUG("Trying to set track freq of: %f\n", values[0]);
+                    LOGF_DEBUG("Trying to set track freq of: %f", values[0]);
                 if (!isSimulation() && setTrackFreq(PortFD, values[0]) < 0)
                 {
-                    LOGF_DEBUG("Trying to set track freq of: %f\n", values[0]);
+                    LOGF_DEBUG("Trying to set track freq of: %f", values[0]);
                     if (!isSimulation() && setTrackFreq(PortFD, values[0]) < 0)
                     {
                         TrackFreqNP.s = IPS_ALERT;

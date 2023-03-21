@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include "indibase.h"
-#include "indidriver.h"
+#include "abstractinterface.h"
+#include <functional>
 
 /**
  * @class GuiderInterface
@@ -44,58 +44,32 @@
  */
 
 #include <stdint.h>
+#include "abstractinterface.h"
 
 namespace INDI
 {
 
-class GuiderInterface
+class GuiderInterface : public AbstractInterface
 {
     public:
-        /**
-         * @brief Guide north for ms milliseconds. North is defined as DEC+
-         * @return IPS_OK if operation is completed successfully, IPS_BUSY if operation will take take to
-         * complete, or IPS_ALERT if operation failed.
-         */
-        virtual IPState GuideNorth(uint32_t ms) = 0;
 
-        /**
-         * @brief Guide south for ms milliseconds. South is defined as DEC-
-         * @return IPS_OK if operation is completed successfully, IPS_BUSY if operation will take take to
-         * complete, or IPS_ALERT if operation failed.
-         */
-        virtual IPState GuideSouth(uint32_t ms) = 0;
-
-        /**
-         * @brief Guide east for ms milliseconds. East is defined as RA+
-         * @return IPS_OK if operation is completed successfully, IPS_BUSY if operation will take take to
-         * complete, or IPS_ALERT if operation failed.
-         */
-        virtual IPState GuideEast(uint32_t ms) = 0;
-
-        /**
-         * @brief Guide west for ms milliseconds. West is defined as RA-
-         * @return IPS_OK if operation is completed successfully, IPS_BUSY if operation will take take to
-         * complete, or IPS_ALERT if operation failed.
-         */
-        virtual IPState GuideWest(uint32_t ms) = 0;
+        explicit GuiderInterface(DefaultDevice *device,
+                                 std::function<IPState(INDI_DIR_NS, uint32_t)> &ns,
+                                 std::function<IPState(INDI_DIR_WE, uint32_t)> &we);
+        ~GuiderInterface() = default;
 
         /**
          * @brief Call GuideComplete once the guiding pulse is complete.
          * @param axis Axis of completed guiding operation.
          */
-        virtual void GuideComplete(INDI_EQ_AXIS axis);
-
-    protected:
-        GuiderInterface();
-        ~GuiderInterface();
+        void setGuideComplete(INDI_EQ_AXIS axis);
 
         /**
          * @brief Initilize guider properties. It is recommended to call this function within
          * initProperties() of your primary device
-         * @param deviceName Name of the primary device
-         * @param groupName Group or tab name to be used to define guider properties.
+         * @param group Group or tab name to be used to define guider properties.
          */
-        void initGuiderProperties(const char *deviceName, const char *groupName);
+        void initProperties(const char *group) override;
 
         /**
          * @brief Call this function whenever client updates GuideNSNP or GuideWSP properties in the
@@ -106,11 +80,12 @@ class GuiderInterface
          * @param names names as passed by the client
          * @param n number of values and names pair to process.
          */
-        void processGuiderProperties(const char *name, double values[], char *names[], int n);
+        bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
 
-        INumber GuideNSN[2];
-        INumberVectorProperty GuideNSNP;
-        INumber GuideWEN[2];
-        INumberVectorProperty GuideWENP;
+        INDI::PropertyNumber GuideNSNP {2};
+        INDI::PropertyNumber GuideWENP {2};
+
+        std::function<IPState(INDI_DIR_NS, uint32_t)> m_GuideNSFP;
+        std::function<IPState(INDI_DIR_WE, uint32_t)> m_GuideWEFP;
 };
 }

@@ -41,17 +41,18 @@ void LightBoxInterface::initProperties(const char *group)
     // Turn on/off light
     LightSP[ParentDevice::INDI_ENABLED].fill("INDI_ENABLED", "On", ISS_OFF);
     LightSP[ParentDevice::INDI_DISABLED].fill("INDI_DISABLED", "Off", ISS_ON);
-    LightSP.fill(m_DefaultDevice->getDeviceName(), "FLAT_LIGHT_CONTROL", "Flat Light", group, IP_RW,  ISR_1OFMANY, 0, IPS_IDLE);
+    LightSP.fill(getDeviceName(), "FLAT_LIGHT_CONTROL", "Flat Light", group, IP_RW,  ISR_1OFMANY, 0, IPS_IDLE);
 
     // Light Intensity
     LightIntensityNP[0].fill("FLAT_LIGHT_INTENSITY_VALUE", "Value", "%.f", 0, 255, 10, 0);
-    LightIntensityNP.fill(m_DefaultDevice->getDeviceName(), "FLAT_LIGHT_INTENSITY", "Brightness", group, IP_RW, 0, IPS_IDLE);
+    LightIntensityNP.fill(getDeviceName(), "FLAT_LIGHT_INTENSITY", "Brightness", group, IP_RW, 0, IPS_IDLE);
 
     // Active Devices
+    // TODO must remove from interface in INDI 2.0.2
     strncpy(m_ConfigFilter, "Filter Simulator", MAXINDIDEVICE);
     IUGetConfigText(m_DefaultDevice->getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_FILTER", m_ConfigFilter, MAXINDIDEVICE);
     ActiveDeviceTP[0].fill("ACTIVE_FILTER", "Filter", m_ConfigFilter);
-    ActiveDeviceTP.fill(m_DefaultDevice->getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP.fill(getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Filter duration
     FilterIntensityNP.fill(m_DefaultDevice->getDeviceName(), "FLAT_LIGHT_FILTER_INTENSITY", "Filter Intensity",
@@ -122,7 +123,12 @@ bool LightBoxInterface::ISNewNumber(const char *dev, const char *name, double va
     // Light Intensity
     if (LightIntensityNP.isNameMatch(name))
     {
-        if (SetLightBoxBrightness(values[0]))
+        if (!m_SetLightBoxIntensity)
+        {
+            LOG_ERROR("Light intensity not implmeneted in driver.");
+            LightIntensityNP.setState(IPS_ALERT);
+        }
+        else if (m_SetLightBoxIntensity(values[0]))
         {
             LightIntensityNP.update(values, names, n);
             LightIntensityNP.setState(IPS_OK);
@@ -184,23 +190,10 @@ bool LightBoxInterface::ISNewText(const char *dev, const char *name, char *texts
     return false;
 }
 
-bool LightBoxInterface::EnableLightBox(bool enable)
-{
-    INDI_UNUSED(enable);
-    // Must be implemented by child class
-    return false;
-}
-
-bool LightBoxInterface::SetLightBoxBrightness(uint16_t value)
-{
-    INDI_UNUSED(value);
-    // Must be implemented by child class
-    return false;
-}
 
 bool LightBoxInterface::ISSnoopDevice(XMLEle *root)
 {
-    if (m_isDimmable == false)
+    if (!m_SetLightBoxIntensity)
         return false;
 
     XMLEle *ep           = nullptr;
@@ -290,10 +283,9 @@ bool LightBoxInterface::ISSnoopDevice(XMLEle *root)
 
 void LightBoxInterface::addFilterDuration(const char *filterName, uint16_t filterDuration)
 {
-    if (FilterIntensityN == nullptr)
+    if (FilterIntensityNP.count() == 0)
     {
-        FilterIntensityN = (INumber *)malloc(sizeof(INumber));
-        DEBUGDEVICE(device->getDeviceName(), Logger::DBG_DEBUG, "Filter intensity preset created.");
+        LOG_DEBUG("Filter intensity preset created.");
     }
     else
     {
@@ -314,11 +306,11 @@ void LightBoxInterface::addFilterDuration(const char *filterName, uint16_t filte
     FilterIntensityNP.np = FilterIntensityN;
 }
 
-bool LightBoxInterface::saveLightBoxConfigItems(FILE *fp)
+bool LightBoxInterface::saveConfigItems(FILE *fp)
 {
-    IUSaveConfigText(fp, &ActiveDeviceTP);
-    if (FilterIntensityN != nullptr)
-        IUSaveConfigNumber(fp, &FilterIntensityNP);
+    ActiveDeviceTP.save(fp);
+    if (FilterIntensityNP.count() > 0)
+        FilterIntensityNP.save(fp);
 
     return true;
 }

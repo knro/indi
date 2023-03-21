@@ -31,13 +31,8 @@
    Filter durations preset can be defined if the active filter name is set. Once the filter names are retrieved, the duration in seconds can be set for each filter.
    When the filter wheel changes to a new filter, the duration is set accordingly.
 
-   The child class is expected to call the following functions from the INDI frameworks standard functions:
-
-   \e IMPORTANT: initLightBoxProperties() must be called before any other function to initilize the Light device properties.
-   \e IMPORTANT: isGetLightBoxProperties() must be called in your driver ISGetProperties function
-   \e IMPORTANT: processLightBoxSwitch() must be called in your driver ISNewSwitch function.
-   \e IMPORTANT: processLightBoxNumber() must be called in your driver ISNewNumber function.
-   \e IMPORTANT: processLightBoxText() must be called in your driver ISNewText function.
+   Devices implementing LightBox interface need to implement callback functions for setting the brightness level and toggling
+   the light.
 \author Jasem Mutlaq
 */
 namespace INDI
@@ -46,8 +41,29 @@ namespace INDI
 class LightBoxInterface : public AbstractInterface
 {
     protected:
-        LightBoxInterface(DefaultDevice *device, bool isDimmable);
+        explicit LightBoxInterface(DefaultDevice *device);
         virtual ~LightBoxInterface();
+
+
+        /**
+             * @brief registerSetLightBoxEnabled Set light level. Must be impelemented in the child class, if supported.
+             * @param value level of light box
+             * @return True if successful, false otherwise.
+             */
+        void registerSetLightBoxEnabled(const std::function<bool(bool)> &cb)
+        {
+            m_SetLightBoxEnabled = cb;
+        }
+
+        /**
+             * @brief SetLightBoxEnabled Turn on/off on a light box. Must be impelemented in the child class.
+             * @param enable If true, turn on the light, otherwise turn off the light.
+             * @return True if successful, false otherwise.
+             */
+        void registerSetLightBoxIntensity(const std::function<bool(uint32_t)> &cb)
+        {
+            m_SetLightBoxIntensity = cb;
+        }
 
         /** \brief Initilize light box properties. It is recommended to call this function within initProperties() of your primary device
                 \param deviceName Name of the primary device
@@ -76,20 +92,6 @@ class LightBoxInterface : public AbstractInterface
         bool saveConfigItems(FILE *fp) override;
         bool ISSnoopDevice(XMLEle *root) override;
 
-        /**
-             * @brief setBrightness Set light level. Must be impelemented in the child class, if supported.
-             * @param value level of light box
-             * @return True if successful, false otherwise.
-             */
-        virtual bool SetLightBoxBrightness(uint16_t value);
-
-        /**
-             * @brief EnableLightBox Turn on/off on a light box. Must be impelemented in the child class.
-             * @param enable If true, turn on the light, otherwise turn off the light.
-             * @return True if successful, false otherwise.
-             */
-        virtual bool EnableLightBox(bool enable);
-
         // Turn on/off light
         INDI::PropertySwitch LightSP {2};
 
@@ -103,6 +105,9 @@ class LightBoxInterface : public AbstractInterface
 
     private:
         void addFilterDuration(const char *filterName, uint16_t filterDuration);
+
+        std::function<bool(uint16_t)> m_SetLightBoxIntensity;
+        std::function<bool(bool)> m_SetLightBoxEnabled;
 
         uint8_t m_CurrentFilterSlot {0};
         bool m_isDimmable;
