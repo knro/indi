@@ -140,13 +140,13 @@ V4L2_Driver::~V4L2_Driver()
 void V4L2_Driver::updateFrameSize()
 {
     if (CaptureFormatSP.findOnSwitchIndex() == IMAGE_MONO)
-        frameBytes = PrimaryCCD.getSubW() * PrimaryCCD.getSubH() * (PrimaryCCD.getBPP() / 8 + (PrimaryCCD.getBPP() % 8 ? 1 : 0));
+        frameBytes = m_PrimarySensor.getSubW() * m_PrimarySensor.getSubH() * (m_PrimarySensor.getBPP() / 8 + (m_PrimarySensor.getBPP() % 8 ? 1 : 0));
     else
-        frameBytes = PrimaryCCD.getSubW() * PrimaryCCD.getSubH() *
-                     (PrimaryCCD.getBPP() / 8 + (PrimaryCCD.getBPP() % 8 ? 1 : 0)) * 3;
+        frameBytes = m_PrimarySensor.getSubW() * m_PrimarySensor.getSubH() *
+                     (m_PrimarySensor.getBPP() / 8 + (m_PrimarySensor.getBPP() % 8 ? 1 : 0)) * 3;
 
-    PrimaryCCD.setFrameBufferSize(frameBytes);
-    LOGF_DEBUG("%s: frame bytes %d", __FUNCTION__, PrimaryCCD.getFrameBufferSize());
+    m_PrimarySensor.setFrameBufferSize(frameBytes);
+    LOGF_DEBUG("%s: frame bytes %d", __FUNCTION__, m_PrimarySensor.getFrameBufferSize());
 }
 
 bool V4L2_Driver::initProperties()
@@ -172,7 +172,7 @@ bool V4L2_Driver::initProperties()
     addCaptureFormat(color);
     if (CaptureFormatSP[IMAGE_RGB].getState() == ISS_ON)
     {
-        PrimaryCCD.setNAxis(3);
+        m_PrimarySensor.setNAxis(3);
         updateFrameSize();
     }
 
@@ -232,9 +232,9 @@ bool V4L2_Driver::initProperties()
     IUFillNumberVector(&ImageAdjustNP, nullptr, 0, getDeviceName(), "Image Adjustments", "", IMAGE_GROUP, IP_RW, 60,
                        IPS_IDLE);
 
-    PrimaryCCD.getCCDInfo()->p = IP_RW;
+    m_PrimarySensor.getCCDInfo()->p = IP_RW;
 
-    PrimaryCCD.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.001, 3600, 1, false);
+    m_PrimarySensor.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.001, 3600, 1, false);
 
     if (!lx->initProperties(this))
         LOG_WARN("Can not init Long Exposure");
@@ -365,7 +365,7 @@ bool V4L2_Driver::updateProperties()
                       v4l_base->getDeviceName());
         }
         SetCCDParams(V4LFrame->width, V4LFrame->height, V4LFrame->bpp, pixX, pixY);
-        PrimaryCCD.setImageExtension("fits");
+        m_PrimarySensor.setImageExtension("fits");
 
         if (v4l_base->isLXmodCapable())
             lx->updateProperties();
@@ -425,7 +425,7 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
     if (strcmp(name, InputsSP.name) == 0)
     {
         //if ((StreamSP.s == IPS_BUSY) ||  (ExposeTimeNP->s == IPS_BUSY) || (RecordStreamSP.s == IPS_BUSY)) {
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
         {
             LOG_ERROR("Can not set input while capturing.");
             InputsSP.s = IPS_ALERT;
@@ -484,7 +484,7 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
     if (strcmp(name, CaptureFormatsSP.name) == 0)
     {
         //if ((StreamSP.s == IPS_BUSY) ||  (ExposeTimeNP->s == IPS_BUSY) || (RecordStreamSP.s == IPS_BUSY)) {
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
         {
             LOG_ERROR("Can not set format while capturing.");
             CaptureFormatsSP.s = IPS_ALERT;
@@ -510,7 +510,7 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
             }
 
             V4LFrame->bpp = v4l_base->getBpp();
-            PrimaryCCD.setBPP(V4LFrame->bpp);
+            m_PrimarySensor.setBPP(V4LFrame->bpp);
 
             if (CaptureSizesSP.sp != nullptr)
                 deleteProperty(CaptureSizesSP.name);
@@ -546,7 +546,7 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
     if (strcmp(name, CaptureSizesSP.name) == 0)
     {
         //if ((StreamSP.s == IPS_BUSY) ||  (ExposeTimeNP->s == IPS_BUSY) || (RecordStreamSP.s == IPS_BUSY)) {
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
         {
             LOG_ERROR("Can not set capture size while capturing.");
             CaptureSizesSP.s = IPS_ALERT;
@@ -579,10 +579,10 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
             else if (FrameRateNP.np != nullptr)
                 defineProperty(&FrameRateNP);
 
-            PrimaryCCD.setFrame(0, 0, w, h);
+            m_PrimarySensor.setFrame(0, 0, w, h);
             V4LFrame->width  = w;
             V4LFrame->height = h;
-            PrimaryCCD.setResolution(w, h);
+            m_PrimarySensor.setResolution(w, h);
             updateFrameSize();
             Streamer->setSize(w, h);
 
@@ -597,7 +597,7 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
     /* Frame Rate (Discrete) */
     if (strcmp(name, FrameRatesSP.name) == 0)
     {
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
         {
             LOG_ERROR("Can not change frame rate while capturing.");
             FrameRatesSP.s = IPS_ALERT;
@@ -637,11 +637,11 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
         ImageDepthSP.s = IPS_OK;
         if (ImageDepthS[0].s == ISS_ON)
         {
-            PrimaryCCD.setBPP(8);
+            m_PrimarySensor.setBPP(8);
         }
         else
         {
-            PrimaryCCD.setBPP(16);
+            m_PrimarySensor.setBPP(16);
         }
         IDSetSwitch(&ImageDepthSP, nullptr);
         return true;
@@ -722,8 +722,8 @@ bool V4L2_Driver::ISNewSwitch(const char * dev, const char * name, ISState * sta
             ColorProcessingSP.s = IPS_OK;
             IDSetSwitch(&ColorProcessingSP, nullptr);
             V4LFrame->bpp = v4l_base->getBpp();
-            PrimaryCCD.setBPP(V4LFrame->bpp);
-            PrimaryCCD.setBPP(V4LFrame->bpp);
+            m_PrimarySensor.setBPP(V4LFrame->bpp);
+            m_PrimarySensor.setBPP(V4LFrame->bpp);
             updateFrameSize();
             return true;
         }
@@ -773,7 +773,7 @@ bool V4L2_Driver::ISNewNumber(const char * dev, const char * name, double values
     /* Capture Size (Step/Continuous) */
     if (strcmp(name, CaptureSizesNP.name) == 0)
     {
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
         {
             LOG_ERROR("Can not set capture size while capturing.");
             CaptureSizesNP.s = IPS_BUSY;
@@ -817,11 +817,11 @@ bool V4L2_Driver::ISNewNumber(const char * dev, const char * name, double values
                 rsizes[0] = (double)h;
             }
 
-            PrimaryCCD.setFrame(0, 0, w, h);
+            m_PrimarySensor.setFrame(0, 0, w, h);
             IUUpdateNumber(&CaptureSizesNP, rsizes, names, n);
             V4LFrame->width  = w;
             V4LFrame->height = h;
-            PrimaryCCD.setResolution(w, h);
+            m_PrimarySensor.setResolution(w, h);
             CaptureSizesNP.s = IPS_OK;
             updateFrameSize();
             Streamer->setSize(w, h);
@@ -899,7 +899,7 @@ bool V4L2_Driver::StartExposure(float duration)
     if (setShutter(duration))
     {
         V4LFrame->expose = duration;
-        PrimaryCCD.setExposureDuration(duration);
+        m_PrimarySensor.setExposureDuration(duration);
 
         if (!lx->isEnabled() || lx->getLxmode() == LXSERIAL)
             start_capturing(false);
@@ -1146,7 +1146,7 @@ void V4L2_Driver::stdtimerCallback(void * userpointer)
         p->stdtimer = IEAddTimer(1000, (IE_TCF *)stdtimerCallback, userpointer);
     else
         p->stdtimer = -1;
-    p->PrimaryCCD.setExposureLeft(remaining);
+    p->m_PrimarySensor.setExposureLeft(remaining);
 }
 
 bool V4L2_Driver::start_capturing(bool do_stream)
@@ -1251,8 +1251,8 @@ bool V4L2_Driver::UpdateCCDBin(int hor, int ver)
     {
         if (hor == 1 && ver == 1)
         {
-            PrimaryCCD.setBin(hor, ver);
-            Streamer->setSize(PrimaryCCD.getSubW(), PrimaryCCD.getSubH());
+            m_PrimarySensor.setBin(hor, ver);
+            Streamer->setSize(m_PrimarySensor.getSubW(), m_PrimarySensor.getSubH());
             return true;
         }
 
@@ -1278,8 +1278,8 @@ bool V4L2_Driver::UpdateCCDBin(int hor, int ver)
         return false;
     }
 
-    PrimaryCCD.setBin(hor, ver);
-    Streamer->setSize(PrimaryCCD.getSubW() / hor, PrimaryCCD.getSubH() / ver);
+    m_PrimarySensor.setBin(hor, ver);
+    Streamer->setSize(m_PrimarySensor.getSubW() / hor, m_PrimarySensor.getSubH() / ver);
 
     return true;
 }
@@ -1297,7 +1297,7 @@ bool V4L2_Driver::UpdateCCDFrame(int x, int y, int w, int h)
 
         V4LFrame->width  = crect.width;
         V4LFrame->height = crect.height;
-        PrimaryCCD.setFrame(x, y, w, h);
+        m_PrimarySensor.setFrame(x, y, w, h);
         updateFrameSize();
         Streamer->setSize(w, h);
         return true;
@@ -1379,7 +1379,7 @@ void V4L2_Driver::newFrame()
         int totalBytes        = 0;
         unsigned char * buffer = nullptr;
 
-        std::unique_lock<std::mutex> guard(ccdBufferLock);
+        std::unique_lock<std::mutex> guard(m_BufferLock);
 
         if (v4l_base->getFormat() == V4L2_PIX_FMT_MJPEG)
         {
@@ -1387,8 +1387,8 @@ void V4L2_Driver::newFrame()
             auto buffer = v4l_base->getMJPEGBuffer(totalBytes);
             if (buffer)
             {
-                PrimaryCCD.setFrameBufferSize(totalBytes);
-                memcpy(PrimaryCCD.getFrameBuffer(), buffer, totalBytes);
+                m_PrimarySensor.setFrameBufferSize(totalBytes);
+                memcpy(m_PrimarySensor.getFrameBuffer(), buffer, totalBytes);
             }
             guard.unlock();
 
@@ -1444,12 +1444,12 @@ void V4L2_Driver::newFrame()
             }
         }
 
-        if (PrimaryCCD.getBinX() > 1)
+        if (m_PrimarySensor.getBinX() > 1)
         {
-            memcpy(PrimaryCCD.getFrameBuffer(), buffer, totalBytes);
-            PrimaryCCD.binFrame();
+            memcpy(m_PrimarySensor.getFrameBuffer(), buffer, totalBytes);
+            m_PrimarySensor.binFrame();
             guard.unlock();
-            Streamer->newFrame(PrimaryCCD.getFrameBuffer(), frameBytes / PrimaryCCD.getBinX());
+            Streamer->newFrame(m_PrimarySensor.getFrameBuffer(), frameBytes / m_PrimarySensor.getBinX());
         }
         else
         {
@@ -1459,7 +1459,7 @@ void V4L2_Driver::newFrame()
         return;
     }
 
-    if ( PrimaryCCD.isExposing() )
+    if ( m_PrimarySensor.isExposing() )
     {
         non_capture_frames = 0;
         if( !is_capturing )
@@ -1491,7 +1491,7 @@ void V4L2_Driver::newFrame()
 
 
         float remaining = getRemainingExposure();
-        PrimaryCCD.setExposureLeft(remaining);
+        m_PrimarySensor.setExposureLeft(remaining);
 
         // Stack Mono frames
         if ((m_StackMode) && !(lx->isEnabled()) && CaptureFormatSP[IMAGE_MONO].getState() == ISS_ON)
@@ -1508,15 +1508,15 @@ void V4L2_Driver::newFrame()
 
         if (EncodeFormatSP.findOnSwitchIndex() ==  FORMAT_NATIVE && v4l_base->getFormat() == V4L2_PIX_FMT_MJPEG)
         {
-            std::unique_lock<std::mutex> guard(ccdBufferLock);
+            std::unique_lock<std::mutex> guard(m_BufferLock);
             int totalBytes = 0;
             auto buffer = v4l_base->getMJPEGBuffer(totalBytes);
             if (buffer)
             {
-                memcpy(PrimaryCCD.getFrameBuffer(), buffer, totalBytes);
-                PrimaryCCD.setFrameBufferSize(totalBytes, false);
+                memcpy(m_PrimarySensor.getFrameBuffer(), buffer, totalBytes);
+                m_PrimarySensor.setFrameBufferSize(totalBytes, false);
             }
-            PrimaryCCD.setImageExtension("jpg");
+            m_PrimarySensor.setImageExtension("jpg");
             guard.unlock();
         }
         else if (CaptureFormatSP[IMAGE_MONO].getState() == ISS_ON)
@@ -1525,15 +1525,15 @@ void V4L2_Driver::newFrame()
             {
                 unsigned char * src, *dest;
                 src  = v4l_base->getY();
-                dest = (unsigned char *)PrimaryCCD.getFrameBuffer();
+                dest = (unsigned char *)m_PrimarySensor.getFrameBuffer();
 
-                std::unique_lock<std::mutex> guard(ccdBufferLock);
+                std::unique_lock<std::mutex> guard(m_BufferLock);
                 memcpy(dest, src, frameBytes);
                 guard.unlock();
                 //for (i=0; i< frameBytes; i++)
                 //*(dest++) = *(src++);
 
-                PrimaryCCD.binFrame();
+                m_PrimarySensor.binFrame();
             }
             else
             {
@@ -1562,9 +1562,9 @@ void V4L2_Driver::newFrame()
                     if (ImageDepthS[0].s == ISS_ON)
                     {
                         // depth 8 bits
-                        unsigned char * dest = (unsigned char *)PrimaryCCD.getFrameBuffer();
+                        unsigned char * dest = (unsigned char *)m_PrimarySensor.getFrameBuffer();
 
-                        std::unique_lock<std::mutex> guard(ccdBufferLock);
+                        std::unique_lock<std::mutex> guard(m_BufferLock);
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                             *dest++ = (unsigned char)((*src++ * 255.0f) / subframeCount);
                         guard.unlock();
@@ -1572,9 +1572,9 @@ void V4L2_Driver::newFrame()
                     else
                     {
                         // depth 16 bits
-                        unsigned short * dest = (unsigned short *)PrimaryCCD.getFrameBuffer();
+                        unsigned short * dest = (unsigned short *)m_PrimarySensor.getFrameBuffer();
 
-                        std::unique_lock<std::mutex> guard(ccdBufferLock);
+                        std::unique_lock<std::mutex> guard(m_BufferLock);
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                             *dest++ = (unsigned short)((*src++ * 65535.0f) / subframeCount);
                         guard.unlock();
@@ -1589,9 +1589,9 @@ void V4L2_Driver::newFrame()
                     if (ImageDepthS[0].s == ISS_ON)
                     {
                         // depth 8 bits
-                        unsigned char * dest = (unsigned char *)PrimaryCCD.getFrameBuffer();
+                        unsigned char * dest = (unsigned char *)m_PrimarySensor.getFrameBuffer();
 
-                        std::unique_lock<std::mutex> guard(ccdBufferLock);
+                        std::unique_lock<std::mutex> guard(m_BufferLock);
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                         {
                             *dest++ = *src < 1.0f ? (unsigned char)((*src * 255)) : 255;
@@ -1602,7 +1602,7 @@ void V4L2_Driver::newFrame()
                     else
                     {
                         // depth 16 bits
-                        unsigned short * dest = (unsigned short *)PrimaryCCD.getFrameBuffer();
+                        unsigned short * dest = (unsigned short *)m_PrimarySensor.getFrameBuffer();
 
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                         {
@@ -1624,9 +1624,9 @@ void V4L2_Driver::newFrame()
                     if (ImageDepthS[0].s == ISS_ON)
                     {
                         // depth 8 bits
-                        unsigned char * dest = (unsigned char *)PrimaryCCD.getFrameBuffer();
+                        unsigned char * dest = (unsigned char *)m_PrimarySensor.getFrameBuffer();
 
-                        std::unique_lock<std::mutex> guard(ccdBufferLock);
+                        std::unique_lock<std::mutex> guard(m_BufferLock);
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                             *dest++ = (unsigned char)((*src++ * 255));
                         guard.unlock();
@@ -1634,23 +1634,23 @@ void V4L2_Driver::newFrame()
                     else
                     {
                         // depth 16 bits
-                        unsigned short * dest = (unsigned short *)PrimaryCCD.getFrameBuffer();
+                        unsigned short * dest = (unsigned short *)m_PrimarySensor.getFrameBuffer();
 
-                        std::unique_lock<std::mutex> guard(ccdBufferLock);
+                        std::unique_lock<std::mutex> guard(m_BufferLock);
                         for (int i = 0; i < v4l_base->getWidth() * v4l_base->getHeight(); i++)
                             *dest++ = (unsigned short)((*src++ * 65535));
                         guard.unlock();
                     }
                 }
             }
-            PrimaryCCD.setImageExtension("fits");
+            m_PrimarySensor.setImageExtension("fits");
         }
         else
         {
             // Binning not supported in color images for now
-            std::unique_lock<std::mutex> guard(ccdBufferLock);
+            std::unique_lock<std::mutex> guard(m_BufferLock);
             unsigned char * src  = v4l_base->getRGBBuffer();
-            unsigned char * dest = PrimaryCCD.getFrameBuffer();
+            unsigned char * dest = m_PrimarySensor.getFrameBuffer();
             // We have RGB RGB RGB data but for FITS file we need each color in separate plane. i.e. RRR GGG BBB ..etc
             unsigned char * red   = dest;
             unsigned char * green = dest + v4l_base->getWidth() * v4l_base->getHeight() * (v4l_base->getBpp() / 8);
@@ -1664,7 +1664,7 @@ void V4L2_Driver::newFrame()
             }
             guard.unlock();
 
-            PrimaryCCD.setImageExtension("fits");
+            m_PrimarySensor.setImageExtension("fits");
         }
         frameCount += 1;
 
@@ -1673,9 +1673,9 @@ void V4L2_Driver::newFrame()
             if (Streamer->isBusy() == false)
                 stop_capturing();
 
-            if (PrimaryCCD.getExposureDuration() >= 3)
+            if (m_PrimarySensor.getExposureDuration() >= 3)
                 LOGF_INFO("Capture of LX frame took %ld.%06ld seconds.", current_exposure.tv_sec, current_exposure.tv_usec);
-            ExposureComplete(&PrimaryCCD);
+            ExposureComplete(&m_PrimarySensor);
         }
         else
         {
@@ -1689,10 +1689,10 @@ void V4L2_Driver::newFrame()
                 LOGF_DEBUG("%s: streamer is busy, continue capturing\n", __FUNCTION__);
 
 
-            if (PrimaryCCD.getExposureDuration() >= 3)
+            if (m_PrimarySensor.getExposureDuration() >= 3)
                 LOGF_INFO("Capture of one frame (%d stacked frames) took %ld.%06ld seconds.",  subframeCount, current_exposure.tv_sec,
                           current_exposure.tv_usec);
-            ExposureComplete(&PrimaryCCD);
+            ExposureComplete(&m_PrimarySensor);
         }
     }
     else
@@ -1761,8 +1761,8 @@ bool V4L2_Driver::Disconnect()
 {
     if (isConnected())
     {
-        v4l_base->disconnectCam(PrimaryCCD.isExposing() || Streamer->isBusy());
-        if (PrimaryCCD.isExposing() || Streamer->isBusy())
+        v4l_base->disconnectCam(m_PrimarySensor.isExposing() || Streamer->isBusy());
+        if (m_PrimarySensor.isExposing() || Streamer->isBusy())
             Streamer->close();
     }
     return true;
@@ -1817,9 +1817,9 @@ void V4L2_Driver::getBasicData()
     v4loptions = 0;
     updateV4L2Controls();
 
-    PrimaryCCD.setResolution(w, h);
-    PrimaryCCD.setFrame(0, 0, w, h);
-    PrimaryCCD.setBPP(V4LFrame->bpp);
+    m_PrimarySensor.setResolution(w, h);
+    m_PrimarySensor.setFrame(0, 0, w, h);
+    m_PrimarySensor.setBPP(V4LFrame->bpp);
     updateFrameSize();
     //direct_record=recorder->setpixelformat(v4l_base->fmt.fmt.pix.pixelformat);
     //recorder->setsize(w, h);
@@ -1918,7 +1918,7 @@ void V4L2_Driver::releaseBuffers()
 
 bool V4L2_Driver::StartStreaming()
 {
-    if (PrimaryCCD.getBinX() > 1 && PrimaryCCD.getNAxis() > 2)
+    if (m_PrimarySensor.getBinX() > 1 && m_PrimarySensor.getNAxis() > 2)
     {
         LOG_WARN("Cannot stream binned color frame.");
         return false;
@@ -2103,7 +2103,7 @@ bool V4L2_Driver::SetCaptureFormat(uint8_t index)
         return false;
     }
 
-    PrimaryCCD.setNAxis(index == IMAGE_MONO ? 2 : 3);
+    m_PrimarySensor.setNAxis(index == IMAGE_MONO ? 2 : 3);
     updateFrameSize();
     Streamer->setPixelFormat(index == 0 ? INDI_MONO : INDI_RGB, 8);
     return true;

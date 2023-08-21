@@ -39,8 +39,8 @@ static std::unique_ptr<CCDSim> ccdsim(new CCDSim());
 
 CCDSim::CCDSim() : INDI::FilterInterface(this)
 {
-    currentRA  = RA;
-    currentDE = Dec;
+    currentRA  = m_MountJNowRA;
+    currentDE = m_MountJNowDE;
 
     terminateThread = false;
 
@@ -72,13 +72,13 @@ bool CCDSim::setupParameters()
     m_PEPeriod = SimulatorSettingsN[SIM_PE_PERIOD].value;
     m_PEMax = SimulatorSettingsN[SIM_PE_MAX].value;
     m_TimeFactor = SimulatorSettingsN[SIM_TIME_FACTOR].value;
-    RotatorAngle = SimulatorSettingsN[SIM_ROTATION].value;
+    m_RotatorAngle = SimulatorSettingsN[SIM_ROTATION].value;
 
-    uint32_t nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
-    PrimaryCCD.setFrameBufferSize(nbuf);
+    uint32_t nbuf = m_PrimarySensor.getXRes() * m_PrimarySensor.getYRes() * m_PrimarySensor.getBPP() / 8;
+    m_PrimarySensor.setFrameBufferSize(nbuf);
 
     Streamer->setPixelFormat(INDI_MONO, 16);
-    Streamer->setSize(PrimaryCCD.getXRes(), PrimaryCCD.getYRes());
+    Streamer->setSize(m_PrimarySensor.getXRes(), m_PrimarySensor.getYRes());
 
     return true;
 }
@@ -323,19 +323,19 @@ bool CCDSim::StartExposure(float duration)
     AbortPrimaryFrame = false;
     ExposureRequest   = duration;
 
-    PrimaryCCD.setExposureDuration(duration);
+    m_PrimarySensor.setExposureDuration(duration);
     gettimeofday(&ExpStart, nullptr);
     //  Leave the proper time showing for the draw routines
-    if (PrimaryCCD.getFrameType() == INDI::CCDChip::LIGHT_FRAME && DirectorySP[INDI_ENABLED].getState() == ISS_ON)
+    if (m_PrimarySensor.getFrameType() == INDI::CCDChip::LIGHT_FRAME && DirectorySP[INDI_ENABLED].getState() == ISS_ON)
     {
         if (loadNextImage() == false)
             return false;
     }
     else
-        DrawCcdFrame(&PrimaryCCD);
+        DrawCcdFrame(&m_PrimarySensor);
     //  Now compress the actual wait time
     ExposureRequest = duration * m_TimeFactor;
-    InExposure      = true;
+    m_ExposureActive      = true;
 
     return true;
 }
@@ -353,7 +353,7 @@ bool CCDSim::StartGuideExposure(float n)
 
 bool CCDSim::AbortExposure()
 {
-    if (!InExposure)
+    if (!m_ExposureActive)
         return true;
 
     AbortPrimaryFrame = true;
@@ -395,11 +395,11 @@ void CCDSim::TimerHit()
     if (!isConnected())
         return;
 
-    if (InExposure)
+    if (m_ExposureActive)
     {
         if (AbortPrimaryFrame)
         {
-            InExposure        = false;
+            m_ExposureActive        = false;
             AbortPrimaryFrame = false;
         }
         else
@@ -411,17 +411,17 @@ void CCDSim::TimerHit()
             if (timeleft < 0)
                 timeleft = 0;
 
-            PrimaryCCD.setExposureLeft(timeleft);
+            m_PrimarySensor.setExposureLeft(timeleft);
 
             if (timeleft < 1.0)
             {
                 if (timeleft <= 0.001)
                 {
-                    InExposure = false;
+                    m_ExposureActive = false;
                     // We don't bin for raw images.
                     if (DirectorySP[INDI_DISABLED].getState() == ISS_ON)
-                        PrimaryCCD.binFrame();
-                    ExposureComplete(&PrimaryCCD);
+                        m_PrimarySensor.binFrame();
+                    ExposureComplete(&m_PrimarySensor);
                 }
                 else
                 {
@@ -524,7 +524,7 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 
     exposure_time *= (1 + sqrt(GainN[0].value));
 
-    auto targetFocalLength = ScopeInfoNP[FocalLength].getValue() > 0 ? ScopeInfoNP[FocalLength].getValue() : snoopedFocalLength;
+    auto targetFocalLength = ScopeInfoNP[FocalLength].getValue();
 
     if (ShowStarField)
     {
@@ -592,9 +592,9 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 #endif
 
         double theta = 270;
-        if (!std::isnan(RotatorAngle))
-            theta += RotatorAngle;
-        if (pierSide == 1)
+        if (!std::isnan(m_RotatorAngle))
+            theta += m_RotatorAngle;
+        if (m_MountPierSide == 1)
             theta -= 180;       // rotate 180 if on East
         theta = range360(theta);
 
@@ -618,8 +618,8 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         if (!usePE)
         {
 #endif
-            currentRA  = RA;
-            currentDE = Dec;
+            currentRA  = m_MountJNowRA;
+            currentDE = m_MountJNowDE;
 
             if (std::isnan(currentRA))
             {
@@ -693,7 +693,7 @@ int CCDSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         //  if this is a light frame, we need a star field drawn
         INDI::CCDChip::CCD_FRAME ftype = targetChip->getFrameType();
 
-        std::unique_lock<std::mutex> guard(ccdBufferLock);
+        std::unique_lock<std::mutex> guard(m_BufferLock);
 
         //  Start by clearing the frame buffer
         memset(targetChip->getFrameBuffer(), 0, targetChip->getFrameBufferSize());
@@ -1103,8 +1103,8 @@ bool CCDSim::ISNewNumber(const char * dev, const char * name, double values[], c
             epochPos.rightascension  = EqPEN[AXIS_RA].value;
             epochPos.declination = EqPEN[AXIS_DE].value;
 
-            RA = EqPEN[AXIS_RA].value;
-            Dec = EqPEN[AXIS_DE].value;
+            m_MountJNowRA = EqPEN[AXIS_RA].value;
+            m_MountJNowDE = EqPEN[AXIS_DE].value;
 
             INDI::ObservedToJ2000(&epochPos, ln_get_julian_from_sys(), &J2000Pos);
             currentRA  = J2000Pos.rightascension;
@@ -1281,7 +1281,7 @@ bool CCDSim::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "FOCUS_ABSOLUTE_POSITION"))
             {
-                FocuserPos = atol(pcdataXMLEle(ep));
+                m_FocuserAbsolutePosition = atol(pcdataXMLEle(ep));
 
                 // calculate FWHM
                 double focus       = FocusSimulationN[0].value;
@@ -1289,7 +1289,7 @@ bool CCDSim::ISSnoopDevice(XMLEle * root)
                 double optimalFWHM = FocusSimulationN[2].value;
 
                 // limit to +/- 10
-                double ticks = 20 * (FocuserPos - focus) / max;
+                double ticks = 20 * (m_FocuserAbsolutePosition - focus) / max;
 
                 seeing = 0.5625 * ticks * ticks + optimalFWHM;
                 return true;
@@ -1401,8 +1401,8 @@ bool CCDSim::StopStreaming()
 
 bool CCDSim::UpdateCCDFrame(int x, int y, int w, int h)
 {
-    long bin_width  = w / PrimaryCCD.getBinX();
-    long bin_height = h / PrimaryCCD.getBinY();
+    long bin_width  = w / m_PrimarySensor.getBinX();
+    long bin_height = h / m_PrimarySensor.getBinY();
 
     bin_width  = bin_width - (bin_width % 2);
     bin_height = bin_height - (bin_height % 2);
@@ -1414,14 +1414,14 @@ bool CCDSim::UpdateCCDFrame(int x, int y, int w, int h)
 
 bool CCDSim::UpdateCCDBin(int hor, int ver)
 {
-    if (PrimaryCCD.getSubW() % hor != 0 || PrimaryCCD.getSubH() % ver != 0)
+    if (m_PrimarySensor.getSubW() % hor != 0 || m_PrimarySensor.getSubH() % ver != 0)
     {
         LOGF_ERROR("%dx%d binning is not supported.", hor, ver);
         return false;
     }
 
-    uint32_t bin_width  = PrimaryCCD.getSubW() / hor;
-    uint32_t bin_height = PrimaryCCD.getSubH() / ver;
+    uint32_t bin_width  = m_PrimarySensor.getSubW() / hor;
+    uint32_t bin_height = m_PrimarySensor.getSubH() / ver;
     Streamer->setSize(bin_width, bin_height);
 
     return INDI::CCD::UpdateCCDBin(hor, ver);
@@ -1465,9 +1465,9 @@ void * CCDSim::streamVideo()
 
 
         // 16 bit
-        DrawCcdFrame(&PrimaryCCD);
+        DrawCcdFrame(&m_PrimarySensor);
 
-        PrimaryCCD.binFrame();
+        m_PrimarySensor.binFrame();
 
         auto finish = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = finish - start;
@@ -1475,8 +1475,8 @@ void * CCDSim::streamVideo()
         if (elapsed.count() < ExposureRequest)
             usleep(fabs(ExposureRequest - elapsed.count()) * 1e6);
 
-        uint32_t size = PrimaryCCD.getFrameBufferSize() / (PrimaryCCD.getBinX() * PrimaryCCD.getBinY());
-        Streamer->newFrame(PrimaryCCD.getFrameBuffer(), size);
+        uint32_t size = m_PrimarySensor.getFrameBufferSize() / (m_PrimarySensor.getBinX() * m_PrimarySensor.getBinY());
+        Streamer->newFrame(m_PrimarySensor.getFrameBuffer(), size);
 
         start = std::chrono::high_resolution_clock::now();
     }
@@ -1518,14 +1518,14 @@ bool CCDSim::loadNextImage()
     if (ndim < 3)
         naxes[2] = 1;
     else
-        PrimaryCCD.setNAxis(3);
+        m_PrimarySensor.setNAxis(3);
     int samples_per_channel = naxes[0] * naxes[1];
     int channels = naxes[2];
     int elements = samples_per_channel * channels;
     int size =  elements * bitpix / 8;
-    PrimaryCCD.setFrameBufferSize(size);
+    m_PrimarySensor.setFrameBufferSize(size);
 
-    if (fits_read_img(fptr, bitpix == 8 ? TBYTE : TUSHORT, 1, elements, 0, PrimaryCCD.getFrameBuffer(), &anynull, &status))
+    if (fits_read_img(fptr, bitpix == 8 ? TBYTE : TUSHORT, 1, elements, 0, m_PrimarySensor.getFrameBuffer(), &anynull, &status))
     {
         char error_status[512] = {0};
         fits_get_errstatus(status, error_status);

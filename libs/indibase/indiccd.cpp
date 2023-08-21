@@ -81,59 +81,37 @@ namespace INDI
 
 CCD::CCD()
 {
-    //ctor
     capability = 0;
 
-    InExposure              = false;
-    InGuideExposure         = false;
-    //RapidGuideEnabled       = false;
-    //GuiderRapidGuideEnabled = false;
-    m_ValidCCDRotation        = false;
+    m_MountJNowRA          = std::numeric_limits<double>::quiet_NaN();
+    m_MountJNowDE          = std::numeric_limits<double>::quiet_NaN();
+    m_MountPierSide        = -1;
+    m_MountJ2000RA         = std::numeric_limits<double>::quiet_NaN();
+    m_MountJ2000DE         = std::numeric_limits<double>::quiet_NaN();
+    m_MountJ2000Valid      = false;
+    m_MPSAS           = std::numeric_limits<double>::quiet_NaN();
+    m_RotatorAngle    = std::numeric_limits<double>::quiet_NaN();
+    m_FocuserAbsolutePosition      = -1;
+    m_FocuserTemperature     = std::numeric_limits<double>::quiet_NaN();
 
-    AutoLoop         = false;
-    SendImage        = false;
-    ShowMarker       = false;
-    GuiderAutoLoop   = false;
-    GuiderSendImage  = false;
-    GuiderShowMarker = false;
+    m_AirMass         = std::numeric_limits<double>::quiet_NaN();
+    m_Latitude        = std::numeric_limits<double>::quiet_NaN();
+    m_Longitude       = std::numeric_limits<double>::quiet_NaN();
+    m_Azimuth         = std::numeric_limits<double>::quiet_NaN();
+    m_Altitude        = std::numeric_limits<double>::quiet_NaN();
 
-    ExposureTime       = 0.0;
-    GuiderExposureTime = 0.0;
-    CurrentFilterSlot  = -1;
-
-    RA              = std::numeric_limits<double>::quiet_NaN();
-    Dec             = std::numeric_limits<double>::quiet_NaN();
-    pierSide        = -1;
-    J2000RA         = std::numeric_limits<double>::quiet_NaN();
-    J2000DE         = std::numeric_limits<double>::quiet_NaN();
-    J2000Valid      = false;
-    MPSAS           = std::numeric_limits<double>::quiet_NaN();
-    RotatorAngle    = std::numeric_limits<double>::quiet_NaN();
-    // JJ ed 2019-12-10
-    FocuserPos      = -1;
-    FocuserTemp     = std::numeric_limits<double>::quiet_NaN();
-
-    Airmass         = std::numeric_limits<double>::quiet_NaN();
-    Latitude        = std::numeric_limits<double>::quiet_NaN();
-    Longitude       = std::numeric_limits<double>::quiet_NaN();
-    Azimuth         = std::numeric_limits<double>::quiet_NaN();
-    Altitude        = std::numeric_limits<double>::quiet_NaN();
-    snoopedAperture        = std::numeric_limits<double>::quiet_NaN();
-    snoopedFocalLength     = std::numeric_limits<double>::quiet_NaN();
+    m_ExposureStartTime[0] = 0;
 
     // Check temperature every 5 seconds.
     m_TemperatureCheckTimer.setInterval(5000);
     m_TemperatureCheckTimer.callOnTimeout(std::bind(&CCD::checkTemperatureTarget, this));
-
-    exposureStartTime[0] = 0;
-    exposureDuration = 0.0;
 }
 
 CCD::~CCD()
 {
     // Only update if index is different.
-    if (m_ConfigFastExposureIndex != IUFindOnSwitchIndex(&FastExposureToggleSP))
-        saveConfig(true, FastExposureToggleSP.name);
+    if (m_ConfigFastExposureIndex != FastExposureToggleSP.findOnSwitchIndex())
+        saveConfig(FastExposureToggleSP);
 }
 
 void CCD::SetCCDCapability(uint32_t cap)
@@ -154,10 +132,9 @@ bool CCD::initProperties()
 {
     DefaultDevice::initProperties();
 
-    // CCD Temperature
-    IUFillNumber(&TemperatureN[0], "CCD_TEMPERATURE_VALUE", "Temperature (C)", "%5.2f", -50.0, 50.0, 0., 0.);
-    IUFillNumberVector(&TemperatureNP, TemperatureN, 1, getDeviceName(), "CCD_TEMPERATURE", "Temperature",
-                       MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+    // TEC Temperature
+    TemperatureNP[0].fill("CCD_TEMPERATURE_VALUE", "Temperature (C)", "%5.2f", -50.0, 50.0, 0., 0.);
+    TemperatureNP.fill(getDeviceName(), "CCD_TEMPERATURE", "Temperature", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     // Camera temperature ramp
     TemperatureRampNP[RAMP_SLOPE].fill("RAMP_SLOPE", "Max. dT (C/min)", "%.f", 0, 30, 1, 0);
@@ -169,61 +146,61 @@ bool CCD::initProperties()
     /**********************************************/
 
     // Primary CCD Region-Of-Interest (ROI)
-    IUFillNumber(&PrimaryCCD.ImageFrameN[CCDChip::FRAME_X], "X", "Left ", "%4.0f", 0, 0.0, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImageFrameN[CCDChip::FRAME_Y], "Y", "Top", "%4.0f", 0, 0, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImageFrameN[CCDChip::FRAME_W], "WIDTH", "Width", "%4.0f", 0, 0.0, 0, 0.0);
-    IUFillNumber(&PrimaryCCD.ImageFrameN[CCDChip::FRAME_H], "HEIGHT", "Height", "%4.0f", 0, 0, 0, 0.0);
-    IUFillNumberVector(&PrimaryCCD.ImageFrameNP, PrimaryCCD.ImageFrameN, 4, getDeviceName(), "CCD_FRAME", "Frame",
+    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_X], "X", "Left ", "%4.0f", 0, 0.0, 0, 0);
+    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_Y], "Y", "Top", "%4.0f", 0, 0, 0, 0);
+    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_W], "WIDTH", "Width", "%4.0f", 0, 0.0, 0, 0.0);
+    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_H], "HEIGHT", "Height", "%4.0f", 0, 0, 0, 0.0);
+    IUFillNumberVector(&m_PrimarySensor.ImageFrameNP, m_PrimarySensor.ImageFrameN, 4, getDeviceName(), "CCD_FRAME", "Frame",
                        IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Frame Type
-    IUFillSwitch(&PrimaryCCD.FrameTypeS[CCDChip::LIGHT_FRAME], "FRAME_LIGHT", "Light", ISS_ON);
-    IUFillSwitch(&PrimaryCCD.FrameTypeS[CCDChip::BIAS_FRAME], "FRAME_BIAS", "Bias", ISS_OFF);
-    IUFillSwitch(&PrimaryCCD.FrameTypeS[CCDChip::DARK_FRAME], "FRAME_DARK", "Dark", ISS_OFF);
-    IUFillSwitch(&PrimaryCCD.FrameTypeS[CCDChip::FLAT_FRAME], "FRAME_FLAT", "Flat", ISS_OFF);
-    IUFillSwitchVector(&PrimaryCCD.FrameTypeSP, PrimaryCCD.FrameTypeS, 4, getDeviceName(), "CCD_FRAME_TYPE",
+    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::LIGHT_FRAME], "FRAME_LIGHT", "Light", ISS_ON);
+    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::BIAS_FRAME], "FRAME_BIAS", "Bias", ISS_OFF);
+    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::DARK_FRAME], "FRAME_DARK", "Dark", ISS_OFF);
+    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::FLAT_FRAME], "FRAME_FLAT", "Flat", ISS_OFF);
+    IUFillSwitchVector(&m_PrimarySensor.FrameTypeSP, m_PrimarySensor.FrameTypeS, 4, getDeviceName(), "CCD_FRAME_TYPE",
                        "Type", IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     // Primary CCD Exposure
-    IUFillNumber(&PrimaryCCD.ImageExposureN[0], "CCD_EXPOSURE_VALUE", "Duration (s)", "%5.2f", 0.01, 3600, 1.0, 1.0);
-    IUFillNumberVector(&PrimaryCCD.ImageExposureNP, PrimaryCCD.ImageExposureN, 1, getDeviceName(), "CCD_EXPOSURE",
+    IUFillNumber(&m_PrimarySensor.ImageExposureN[0], "CCD_EXPOSURE_VALUE", "Duration (s)", "%5.2f", 0.01, 3600, 1.0, 1.0);
+    IUFillNumberVector(&m_PrimarySensor.ImageExposureNP, m_PrimarySensor.ImageExposureN, 1, getDeviceName(), "CCD_EXPOSURE",
                        "Expose", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Abort
-    IUFillSwitch(&PrimaryCCD.AbortExposureS[0], "ABORT", "Abort", ISS_OFF);
-    IUFillSwitchVector(&PrimaryCCD.AbortExposureSP, PrimaryCCD.AbortExposureS, 1, getDeviceName(), "CCD_ABORT_EXPOSURE",
+    IUFillSwitch(&m_PrimarySensor.AbortExposureS[0], "ABORT", "Abort", ISS_OFF);
+    IUFillSwitchVector(&m_PrimarySensor.AbortExposureSP, m_PrimarySensor.AbortExposureS, 1, getDeviceName(), "CCD_ABORT_EXPOSURE",
                        "Abort", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
     // Primary CCD Binning
-    IUFillNumber(&PrimaryCCD.ImageBinN[0], "HOR_BIN", "X", "%2.0f", 1, 4, 1, 1);
-    IUFillNumber(&PrimaryCCD.ImageBinN[1], "VER_BIN", "Y", "%2.0f", 1, 4, 1, 1);
-    IUFillNumberVector(&PrimaryCCD.ImageBinNP, PrimaryCCD.ImageBinN, 2, getDeviceName(), "CCD_BINNING", "Binning",
+    IUFillNumber(&m_PrimarySensor.ImageBinN[0], "HOR_BIN", "X", "%2.0f", 1, 4, 1, 1);
+    IUFillNumber(&m_PrimarySensor.ImageBinN[1], "VER_BIN", "Y", "%2.0f", 1, 4, 1, 1);
+    IUFillNumberVector(&m_PrimarySensor.ImageBinNP, m_PrimarySensor.ImageBinN, 2, getDeviceName(), "CCD_BINNING", "Binning",
                        IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Info
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_MAX_X], "CCD_MAX_X", "Max. Width", "%.f", 1, 16000, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_MAX_Y], "CCD_MAX_Y", "Max. Height", "%.f", 1, 16000, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE], "CCD_PIXEL_SIZE", "Pixel size (um)", "%.2f", 1,
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_MAX_X], "CCD_MAX_X", "Max. Width", "%.f", 1, 16000, 0, 0);
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_MAX_Y], "CCD_MAX_Y", "Max. Height", "%.f", 1, 16000, 0, 0);
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE], "CCD_PIXEL_SIZE", "Pixel size (um)", "%.2f", 1,
                  40, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_X], "CCD_PIXEL_SIZE_X", "Pixel size X", "%.2f", 1,
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_X], "CCD_PIXEL_SIZE_X", "Pixel size X", "%.2f", 1,
                  40, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_Y], "CCD_PIXEL_SIZE_Y", "Pixel size Y", "%.2f", 1,
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_Y], "CCD_PIXEL_SIZE_Y", "Pixel size Y", "%.2f", 1,
                  40, 0, 0);
-    IUFillNumber(&PrimaryCCD.ImagePixelSizeN[CCDChip::CCD_BITSPERPIXEL], "CCD_BITSPERPIXEL", "Bits per pixel", "%.f",
+    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_BITSPERPIXEL], "CCD_BITSPERPIXEL", "Bits per pixel", "%.f",
                  8, 64, 0, 0);
-    IUFillNumberVector(&PrimaryCCD.ImagePixelSizeNP, PrimaryCCD.ImagePixelSizeN, 6, getDeviceName(), "CCD_INFO",
+    IUFillNumberVector(&m_PrimarySensor.ImagePixelSizeNP, m_PrimarySensor.ImagePixelSizeN, 6, getDeviceName(), "CCD_INFO",
                        "CCD Information", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
 
     // Primary CCD Compression Options
-    IUFillSwitch(&PrimaryCCD.CompressS[INDI_ENABLED], "INDI_ENABLED", "Enabled", ISS_OFF);
-    IUFillSwitch(&PrimaryCCD.CompressS[INDI_DISABLED], "INDI_DISABLED", "Disabled", ISS_ON);
-    IUFillSwitchVector(&PrimaryCCD.CompressSP, PrimaryCCD.CompressS, 2, getDeviceName(), "CCD_COMPRESSION", "Compression",
+    IUFillSwitch(&m_PrimarySensor.CompressS[INDI_ENABLED], "INDI_ENABLED", "Enabled", ISS_OFF);
+    IUFillSwitch(&m_PrimarySensor.CompressS[INDI_DISABLED], "INDI_DISABLED", "Disabled", ISS_ON);
+    IUFillSwitchVector(&m_PrimarySensor.CompressSP, m_PrimarySensor.CompressS, 2, getDeviceName(), "CCD_COMPRESSION", "Compression",
                        IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
-    PrimaryCCD.SendCompressed = false;
+    m_PrimarySensor.SendCompressed = false;
 
     // Primary CCD Chip Data Blob
-    IUFillBLOB(&PrimaryCCD.FitsB, "CCD1", "Image", "");
-    IUFillBLOBVector(&PrimaryCCD.FitsBP, &PrimaryCCD.FitsB, 1, getDeviceName(), "CCD1", "Image Data", IMAGE_INFO_TAB,
+    IUFillBLOB(&m_PrimarySensor.FitsB, "CCD1", "Image", "");
+    IUFillBLOBVector(&m_PrimarySensor.FitsBP, &m_PrimarySensor.FitsB, 1, getDeviceName(), "CCD1", "Image Data", IMAGE_INFO_TAB,
                      IP_RO, 60, IPS_IDLE);
 
     // Bayer
@@ -234,120 +211,13 @@ bool CCD::initProperties()
                      IPS_IDLE);
 
     // Reset Frame Settings
-    IUFillSwitch(&PrimaryCCD.ResetS[0], "RESET", "Reset", ISS_OFF);
-    IUFillSwitchVector(&PrimaryCCD.ResetSP, PrimaryCCD.ResetS, 1, getDeviceName(), "CCD_FRAME_RESET", "Frame Values",
+    IUFillSwitch(&m_PrimarySensor.ResetS[0], "RESET", "Reset", ISS_OFF);
+    IUFillSwitchVector(&m_PrimarySensor.ResetSP, m_PrimarySensor.ResetS, 1, getDeviceName(), "CCD_FRAME_RESET", "Frame Values",
                        IMAGE_SETTINGS_TAB, IP_WO, ISR_1OFMANY, 0, IPS_IDLE);
-
-    /**********************************************/
-    /********* Primary Chip Rapid Guide  **********/
-    /**********************************************/
-#if 0
-    IUFillSwitch(&PrimaryCCD.RapidGuideS[0], "ENABLE", "Enable", ISS_OFF);
-    IUFillSwitch(&PrimaryCCD.RapidGuideS[1], "DISABLE", "Disable", ISS_ON);
-    IUFillSwitchVector(&PrimaryCCD.RapidGuideSP, PrimaryCCD.RapidGuideS, 2, getDeviceName(), "CCD_RAPID_GUIDE",
-                       "Rapid Guide", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
-
-    IUFillSwitch(&PrimaryCCD.RapidGuideSetupS[0], "AUTO_LOOP", "Auto loop", ISS_ON);
-    IUFillSwitch(&PrimaryCCD.RapidGuideSetupS[1], "SEND_IMAGE", "Send image", ISS_OFF);
-    IUFillSwitch(&PrimaryCCD.RapidGuideSetupS[2], "SHOW_MARKER", "Show marker", ISS_OFF);
-    IUFillSwitchVector(&PrimaryCCD.RapidGuideSetupSP, PrimaryCCD.RapidGuideSetupS, 3, getDeviceName(),
-                       "CCD_RAPID_GUIDE_SETUP", "Rapid Guide Setup", RAPIDGUIDE_TAB, IP_RW, ISR_NOFMANY, 0, IPS_IDLE);
-
-    IUFillNumber(&PrimaryCCD.RapidGuideDataN[0], "GUIDESTAR_X", "Guide star position X", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumber(&PrimaryCCD.RapidGuideDataN[1], "GUIDESTAR_Y", "Guide star position Y", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumber(&PrimaryCCD.RapidGuideDataN[2], "GUIDESTAR_FIT", "Guide star fit", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumberVector(&PrimaryCCD.RapidGuideDataNP, PrimaryCCD.RapidGuideDataN, 3, getDeviceName(),
-                       "CCD_RAPID_GUIDE_DATA", "Rapid Guide Data", RAPIDGUIDE_TAB, IP_RO, 60, IPS_IDLE);
-#endif
-
-    /**********************************************/
-    /***************** Guide Chip *****************/
-    /**********************************************/
-
-    IUFillNumber(&GuideCCD.ImageFrameN[CCDChip::FRAME_X], "X", "Left ", "%4.0f", 0, 0, 0, 0);
-    IUFillNumber(&GuideCCD.ImageFrameN[CCDChip::FRAME_Y], "Y", "Top", "%4.0f", 0, 0, 0, 0);
-    IUFillNumber(&GuideCCD.ImageFrameN[CCDChip::FRAME_W], "WIDTH", "Width", "%4.0f", 0, 0, 0, 0);
-    IUFillNumber(&GuideCCD.ImageFrameN[CCDChip::FRAME_H], "HEIGHT", "Height", "%4.0f", 0, 0, 0, 0);
-    IUFillNumberVector(&GuideCCD.ImageFrameNP, GuideCCD.ImageFrameN, 4, getDeviceName(), "GUIDER_FRAME", "Frame",
-                       GUIDE_HEAD_TAB, IP_RW, 60, IPS_IDLE);
-
-    IUFillNumber(&GuideCCD.ImageBinN[0], "HOR_BIN", "X", "%2.0f", 1, 4, 1, 1);
-    IUFillNumber(&GuideCCD.ImageBinN[1], "VER_BIN", "Y", "%2.0f", 1, 4, 1, 1);
-    IUFillNumberVector(&GuideCCD.ImageBinNP, GuideCCD.ImageBinN, 2, getDeviceName(), "GUIDER_BINNING", "Binning",
-                       GUIDE_HEAD_TAB, IP_RW, 60, IPS_IDLE);
-
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_MAX_X], "CCD_MAX_X", "Max. Width", "%4.0f", 1, 16000, 0, 0);
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_MAX_Y], "CCD_MAX_Y", "Max. Height", "%4.0f", 1, 16000, 0, 0);
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE], "CCD_PIXEL_SIZE", "Pixel size (um)", "%5.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_X], "CCD_PIXEL_SIZE_X", "Pixel size X", "%5.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_Y], "CCD_PIXEL_SIZE_Y", "Pixel size Y", "%5.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&GuideCCD.ImagePixelSizeN[CCDChip::CCD_BITSPERPIXEL], "CCD_BITSPERPIXEL", "Bits per pixel", "%3.0f", 8,
-                 64, 0, 0);
-    IUFillNumberVector(&GuideCCD.ImagePixelSizeNP, GuideCCD.ImagePixelSizeN, 6, getDeviceName(), "GUIDER_INFO",
-                       "Info", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
-
-    IUFillSwitch(&GuideCCD.FrameTypeS[0], "FRAME_LIGHT", "Light", ISS_ON);
-    IUFillSwitch(&GuideCCD.FrameTypeS[1], "FRAME_BIAS", "Bias", ISS_OFF);
-    IUFillSwitch(&GuideCCD.FrameTypeS[2], "FRAME_DARK", "Dark", ISS_OFF);
-    IUFillSwitch(&GuideCCD.FrameTypeS[3], "FRAME_FLAT", "Flat", ISS_OFF);
-    IUFillSwitchVector(&GuideCCD.FrameTypeSP, GuideCCD.FrameTypeS, 4, getDeviceName(), "GUIDER_FRAME_TYPE",
-                       "Type", GUIDE_HEAD_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
-
-    IUFillNumber(&GuideCCD.ImageExposureN[0], "GUIDER_EXPOSURE_VALUE", "Duration (s)", "%5.2f", 0.01, 3600, 1.0, 1.0);
-    IUFillNumberVector(&GuideCCD.ImageExposureNP, GuideCCD.ImageExposureN, 1, getDeviceName(), "GUIDER_EXPOSURE",
-                       "Guide Head", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
-
-    IUFillSwitch(&GuideCCD.AbortExposureS[0], "ABORT", "Abort", ISS_OFF);
-    IUFillSwitchVector(&GuideCCD.AbortExposureSP, GuideCCD.AbortExposureS, 1, getDeviceName(), "GUIDER_ABORT_EXPOSURE",
-                       "Abort", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
-
-    IUFillSwitch(&GuideCCD.CompressS[INDI_ENABLED], "INDI_ENABLED", "Enabled", ISS_OFF);
-    IUFillSwitch(&GuideCCD.CompressS[INDI_DISABLED], "INDI_DISABLED", "Disabled", ISS_ON);
-    IUFillSwitchVector(&GuideCCD.CompressSP, GuideCCD.CompressS, 2, getDeviceName(), "GUIDER_COMPRESSION", "Compression",
-                       GUIDE_HEAD_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
-    GuideCCD.SendCompressed = false;
-
-    IUFillBLOB(&GuideCCD.FitsB, "CCD2", "Guider Image", "");
-    IUFillBLOBVector(&GuideCCD.FitsBP, &GuideCCD.FitsB, 1, getDeviceName(), "CCD2", "Image Data", IMAGE_INFO_TAB, IP_RO,
-                     60, IPS_IDLE);
-
-    /**********************************************/
-    /********* Guider Chip Rapid Guide  ***********/
-    /**********************************************/
-
-#if 0
-    IUFillSwitch(&GuideCCD.RapidGuideS[0], "ENABLE", "Enable", ISS_OFF);
-    IUFillSwitch(&GuideCCD.RapidGuideS[1], "DISABLE", "Disable", ISS_ON);
-    IUFillSwitchVector(&GuideCCD.RapidGuideSP, GuideCCD.RapidGuideS, 2, getDeviceName(), "GUIDER_RAPID_GUIDE",
-                       "Guider Head Rapid Guide", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
-
-    IUFillSwitch(&GuideCCD.RapidGuideSetupS[0], "AUTO_LOOP", "Auto loop", ISS_ON);
-    IUFillSwitch(&GuideCCD.RapidGuideSetupS[1], "SEND_IMAGE", "Send image", ISS_OFF);
-    IUFillSwitch(&GuideCCD.RapidGuideSetupS[2], "SHOW_MARKER", "Show marker", ISS_OFF);
-    IUFillSwitchVector(&GuideCCD.RapidGuideSetupSP, GuideCCD.RapidGuideSetupS, 3, getDeviceName(),
-                       "GUIDER_RAPID_GUIDE_SETUP", "Rapid Guide Setup", RAPIDGUIDE_TAB, IP_RW, ISR_NOFMANY, 0,
-                       IPS_IDLE);
-
-    IUFillNumber(&GuideCCD.RapidGuideDataN[0], "GUIDESTAR_X", "Guide star position X", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumber(&GuideCCD.RapidGuideDataN[1], "GUIDESTAR_Y", "Guide star position Y", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumber(&GuideCCD.RapidGuideDataN[2], "GUIDESTAR_FIT", "Guide star fit", "%5.2f", 0, 1024, 0, 0);
-    IUFillNumberVector(&GuideCCD.RapidGuideDataNP, GuideCCD.RapidGuideDataN, 3, getDeviceName(),
-                       "GUIDER_RAPID_GUIDE_DATA", "Rapid Guide Data", RAPIDGUIDE_TAB, IP_RO, 60, IPS_IDLE);
-
-#endif
 
     /**********************************************/
     /******************** WCS *********************/
     /**********************************************/
-
-    // WCS Enable/Disable
-    IUFillSwitch(&WorldCoordS[0], "WCS_ENABLE", "Enable", ISS_OFF);
-    IUFillSwitch(&WorldCoordS[1], "WCS_DISABLE", "Disable", ISS_ON);
-    IUFillSwitchVector(&WorldCoordSP, WorldCoordS, 2, getDeviceName(), "WCS_CONTROL", "WCS", WCS_TAB, IP_RW,
-                       ISR_1OFMANY, 0, IPS_IDLE);
 
     IUFillNumber(&CCDRotationN[0], "CCD_ROTATION_VALUE", "Rotation", "%g", -360, 360, 1, 0);
     IUFillNumberVector(&CCDRotationNP, CCDRotationN, 1, getDeviceName(), "CCD_ROTATION", "CCD FOV", WCS_TAB, IP_RW, 60,
@@ -384,22 +254,19 @@ bool CCD::initProperties()
     /**********************************************/
 
     // Upload Mode
-    IUFillSwitch(&UploadS[UPLOAD_CLIENT], "UPLOAD_CLIENT", "Client", ISS_ON);
-    IUFillSwitch(&UploadS[UPLOAD_LOCAL], "UPLOAD_LOCAL", "Local", ISS_OFF);
-    IUFillSwitch(&UploadS[UPLOAD_BOTH], "UPLOAD_BOTH", "Both", ISS_OFF);
-    IUFillSwitchVector(&UploadSP, UploadS, 3, getDeviceName(), "UPLOAD_MODE", "Upload", OPTIONS_TAB, IP_RW, ISR_1OFMANY,
-                       0, IPS_IDLE);
+    UploadSP[UPLOAD_CLIENT].fill("UPLOAD_CLIENT", "Client", ISS_ON);
+    UploadSP[UPLOAD_LOCAL].fill("UPLOAD_LOCAL", "Local", ISS_OFF);
+    UploadSP[UPLOAD_BOTH].fill("UPLOAD_BOTH", "Both", ISS_OFF);
+    UploadSP.fill(getDeviceName(), "UPLOAD_MODE", "Upload", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
 
     // Upload Settings
-    IUFillText(&UploadSettingsT[UPLOAD_DIR], "UPLOAD_DIR", "Dir", "");
-    IUFillText(&UploadSettingsT[UPLOAD_PREFIX], "UPLOAD_PREFIX", "Prefix", "IMAGE_XXX");
-    IUFillTextVector(&UploadSettingsTP, UploadSettingsT, 2, getDeviceName(), "UPLOAD_SETTINGS", "Upload Settings",
-                     OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
+    UploadSettingsTP[UPLOAD_DIR].fill("UPLOAD_DIR", "Dir", "");
+    UploadSettingsTP[UPLOAD_PREFIX].fill("UPLOAD_PREFIX", "Prefix", "IMAGE_XXX");
+    UploadSettingsTP.fill(getDeviceName(), "UPLOAD_SETTINGS", "Upload Settings", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Upload File Path
-    IUFillText(&FileNameT[0], "FILE_PATH", "Path", "");
-    IUFillTextVector(&FileNameTP, FileNameT, 1, getDeviceName(), "CCD_FILE_PATH", "Filename", IMAGE_INFO_TAB, IP_RO, 60,
-                     IPS_IDLE);
+    FileNameTP[0].fill("FILE_PATH", "Path", "");
+    FileNameTP.fill(getDeviceName(), "CCD_FILE_PATH", "Filename", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
 
     /**********************************************/
     /****************** FITS Header****************/
@@ -413,31 +280,24 @@ bool CCD::initProperties()
     /**********************************************/
     /****************** Exposure Looping **********/
     /***************** Primary CCD Only ***********/
-    IUGetConfigOnSwitchIndex(getDeviceName(), FastExposureToggleSP.name, &m_ConfigFastExposureIndex);
-    IUFillSwitch(&FastExposureToggleS[INDI_ENABLED], "INDI_ENABLED", "Enabled",
-                 m_ConfigFastExposureIndex == INDI_ENABLED ? ISS_ON : ISS_OFF);
-    IUFillSwitch(&FastExposureToggleS[INDI_DISABLED], "INDI_DISABLED", "Disabled",
-                 m_ConfigFastExposureIndex == INDI_DISABLED ? ISS_ON : ISS_OFF);
-    IUFillSwitchVector(&FastExposureToggleSP, FastExposureToggleS, 2, getDeviceName(), "CCD_FAST_TOGGLE", "Fast Exposure",
-                       OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
+    IUGetConfigOnSwitchIndex(getDeviceName(), FastExposureToggleSP.getName(), &m_ConfigFastExposureIndex);
+    FastExposureToggleSP[INDI_ENABLED].fill("INDI_ENABLED", "Enabled", m_ConfigFastExposureIndex == INDI_ENABLED ? ISS_ON : ISS_OFF);
+    FastExposureToggleSP[INDI_DISABLED].fill("INDI_DISABLED", "Disabled", m_ConfigFastExposureIndex == INDI_DISABLED ? ISS_ON : ISS_OFF);
+    FastExposureToggleSP.fill(getDeviceName(), "CCD_FAST_TOGGLE", "Fast Exposure", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
 
     // CCD Should loop until the number of frames specified in this property is completed
-    IUFillNumber(&FastExposureCountN[0], "FRAMES", "Frames", "%.f", 0, 100000, 1, 1);
-    IUFillNumberVector(&FastExposureCountNP, FastExposureCountN, 1, getDeviceName(), "CCD_FAST_COUNT", "Fast Count",
-                       OPTIONS_TAB, IP_RW, 0, IPS_IDLE);
+    FastExposureCountNP[0].fill("FRAMES", "Frames", "%.f", 0, 100000, 1, 1);
+    FastExposureCountNP.fill(getDeviceName(), "CCD_FAST_COUNT", "Fast Count", OPTIONS_TAB, IP_RW, 0, IPS_IDLE);
 
     /**********************************************/
     /**************** Web Socket ******************/
     /**********************************************/
-    IUFillSwitch(&WebSocketS[WEBSOCKET_ENABLED], "WEBSOCKET_ENABLED", "Enabled", ISS_OFF);
-    IUFillSwitch(&WebSocketS[WEBSOCKET_DISABLED], "WEBSOCKET_DISABLED", "Disabled", ISS_ON);
-    IUFillSwitchVector(&WebSocketSP, WebSocketS, 2, getDeviceName(), "CCD_WEBSOCKET", "Websocket", OPTIONS_TAB,
-                       IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
+    WebSocketSP[WEBSOCKET_ENABLED].fill("WEBSOCKET_ENABLED", "Enabled", ISS_OFF);
+    WebSocketSP[WEBSOCKET_DISABLED].fill("WEBSOCKET_DISABLED", "Disabled", ISS_ON);
+    WebSocketSP.fill(getDeviceName(), "CCD_WEBSOCKET", "Websocket", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
 
-    IUFillNumber(&WebSocketSettingsN[WS_SETTINGS_PORT], "WS_SETTINGS_PORT", "Port", "%.f", 0, 50000, 0, 0);
-    IUFillNumberVector(&WebSocketSettingsNP, WebSocketSettingsN, 1, getDeviceName(), "CCD_WEBSOCKET_SETTINGS", "WS Settings",
-                       OPTIONS_TAB, IP_RW,
-                       60, IPS_IDLE);
+    WebSocketSettingsNP[WS_SETTINGS_PORT].fill("WS_SETTINGS_PORT", "Port", "%.f", 0, 50000, 0, 0);
+    WebSocketSettingsNP.fill(getDeviceName(), "CCD_WEBSOCKET_SETTINGS", "WS Settings", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
 
     /**********************************************/
     /**************** Snooping ********************/
@@ -446,26 +306,15 @@ bool CCD::initProperties()
     // Snooped Devices
 
     // Load from config
-    char telescope[MAXINDIDEVICE] = {"Telescope Simulator"};
-    IUGetConfigText(getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_TELESCOPE", telescope, MAXINDIDEVICE);
-    char rotator[MAXINDIDEVICE] = {"Rotator Simulator"};
-    IUGetConfigText(getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_ROTATOR", rotator, MAXINDIDEVICE);
-    char focuser[MAXINDIDEVICE] = {"Focuser Simulator"};
-    IUGetConfigText(getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_FOCUSER", focuser, MAXINDIDEVICE);
-    char filter[MAXINDIDEVICE] = {"CCD Simulator"};
-    IUGetConfigText(getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_FILTER", filter, MAXINDIDEVICE);
-    char skyquality[MAXINDIDEVICE] = {"SQM"};
-    IUGetConfigText(getDeviceName(), "ACTIVE_DEVICES", "ACTIVE_SKYQUALITY", skyquality, MAXINDIDEVICE);
+    ActiveDeviceTP[ACTIVE_TELESCOPE].fill("ACTIVE_TELESCOPE", "Telescope", "Telescope Simulator");
+    ActiveDeviceTP[ACTIVE_ROTATOR].fill("ACTIVE_ROTATOR", "Rotator", "Rotator Simulator");
+    ActiveDeviceTP[ACTIVE_FOCUSER].fill("ACTIVE_FOCUSER", "Focuser", "Focuser Simulator");
+    ActiveDeviceTP[ACTIVE_FILTER].fill("ACTIVE_FILTER", "Filter", "CCD Simulator");
+    ActiveDeviceTP[ACTIVE_SKYQUALITY].fill("ACTIVE_SKYQUALITY", "Sky Quality", "SQM");
+    ActiveDeviceTP.fill(getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP.load();
 
-    IUFillText(&ActiveDeviceT[ACTIVE_TELESCOPE], "ACTIVE_TELESCOPE", "Telescope", telescope);
-    IUFillText(&ActiveDeviceT[ACTIVE_ROTATOR], "ACTIVE_ROTATOR", "Rotator", rotator);
-    IUFillText(&ActiveDeviceT[ACTIVE_FOCUSER], "ACTIVE_FOCUSER", "Focuser", focuser);
-    IUFillText(&ActiveDeviceT[ACTIVE_FILTER], "ACTIVE_FILTER", "Filter", filter);
-    IUFillText(&ActiveDeviceT[ACTIVE_SKYQUALITY], "ACTIVE_SKYQUALITY", "Sky Quality", skyquality);
-    IUFillTextVector(&ActiveDeviceTP, ActiveDeviceT, 5, getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB,
-                     IP_RW, 60, IPS_IDLE);
-
-    auto mount = ActiveDeviceT[ACTIVE_TELESCOPE].text ? ActiveDeviceT[ACTIVE_TELESCOPE].text : "";
+    auto mount = ActiveDeviceTP[ACTIVE_TELESCOPE].getText();
     // Snooped RA/DEC Property
     IUFillNumber(&EqN[0], "RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
     IUFillNumber(&EqN[1], "DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
@@ -474,9 +323,7 @@ bool CCD::initProperties()
     // Snooped J2000 RA/DEC Property
     IUFillNumber(&J2000EqN[0], "RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
     IUFillNumber(&J2000EqN[1], "DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
-    IUFillNumberVector(&J2000EqNP, J2000EqN, 2, mount, "EQUATORIAL_COORD", "J2000 EQ Coord",
-                       "Main Control", IP_RW,
-                       60, IPS_IDLE);
+    IUFillNumberVector(&J2000EqNP, J2000EqN, 2, mount, "EQUATORIAL_COORD", "J2000 EQ Coord", "Main Control", IP_RW, 60, IPS_IDLE);
 
     // Snoop properties of interest
 
@@ -488,20 +335,20 @@ bool CCD::initProperties()
     IDSnoopDevice(mount, "TELESCOPE_PIER_SIDE");
 
     // Snoop Rotator
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_ROTATOR].text, "ABS_ROTATOR_ANGLE");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_ROTATOR].getText(), "ABS_ROTATOR_ANGLE");
 
     // JJ ed 2019-12-10
     // Snoop Focuser
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "ABS_FOCUS_POSITION");
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "FOCUS_TEMPERATURE");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_FOCUSER].getText(), "ABS_FOCUS_POSITION");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_FOCUSER].getText(), "FOCUS_TEMPERATURE");
     //
 
     // Snoop Filter Wheel
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FILTER].text, "FILTER_SLOT");
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FILTER].text, "FILTER_NAME");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_FILTER].getText(), "FILTER_SLOT");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_FILTER].getText(), "FILTER_NAME");
 
     // Snoop Sky Quality Meter
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_SKYQUALITY].text, "SKY_QUALITY");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_SKYQUALITY].getText(), "SKY_QUALITY");
 
     // Guider Interface
     initGuiderProperties(getDeviceName(), GUIDE_CONTROL_TAB);
@@ -516,7 +363,7 @@ bool CCD::initProperties()
 void CCD::ISGetProperties(const char * dev)
 {
     DefaultDevice::ISGetProperties(dev);
-    defineProperty(&ActiveDeviceTP);
+    defineProperty(ActiveDeviceTP);
 
     if (HasStreaming())
         Streamer->ISGetProperties(dev);
@@ -530,19 +377,19 @@ bool CCD::updateProperties()
     //IDLog("CCD UpdateProperties isConnected returns %d %d\n",isConnected(),Connected);
     if (isConnected())
     {
-        defineProperty(&PrimaryCCD.ImageExposureNP);
+        defineProperty(&m_PrimarySensor.ImageExposureNP);
 
         if (CanAbort())
-            defineProperty(&PrimaryCCD.AbortExposureSP);
+            defineProperty(&m_PrimarySensor.AbortExposureSP);
         if (CanSubFrame() == false)
-            PrimaryCCD.ImageFrameNP.p = IP_RO;
+            m_PrimarySensor.ImageFrameNP.p = IP_RO;
 
-        defineProperty(&PrimaryCCD.ImageFrameNP);
+        defineProperty(&m_PrimarySensor.ImageFrameNP);
         if (CanBin() || CanSubFrame())
-            defineProperty(&PrimaryCCD.ResetSP);
+            defineProperty(&m_PrimarySensor.ResetSP);
 
         if (CanBin())
-            defineProperty(&PrimaryCCD.ImageBinNP);
+            defineProperty(&m_PrimarySensor.ImageBinNP);
 
         defineProperty(FITSHeaderTP);
 
@@ -565,57 +412,27 @@ bool CCD::updateProperties()
         defineProperty(CaptureFormatSP);
         defineProperty(EncodeFormatSP);
 
-        defineProperty(&PrimaryCCD.ImagePixelSizeNP);
-        if (HasGuideHead())
-        {
-            defineProperty(&GuideCCD.ImagePixelSizeNP);
-            if (CanBin())
-                defineProperty(&GuideCCD.ImageBinNP);
-        }
-        defineProperty(&PrimaryCCD.CompressSP);
-        defineProperty(&PrimaryCCD.FitsBP);
-        if (HasGuideHead())
-        {
-            defineProperty(&GuideCCD.CompressSP);
-            defineProperty(&GuideCCD.FitsBP);
-        }
+        defineProperty(&m_PrimarySensor.ImagePixelSizeNP);
+        defineProperty(&m_PrimarySensor.CompressSP);
+        defineProperty(&m_PrimarySensor.FitsBP);
         if (HasST4Port())
         {
             defineProperty(&GuideNSNP);
             defineProperty(&GuideWENP);
         }
-        defineProperty(&PrimaryCCD.FrameTypeSP);
+        defineProperty(&m_PrimarySensor.FrameTypeSP);
 
-        if (HasGuideHead())
-            defineProperty(&GuideCCD.FrameTypeSP);
 
         if (HasBayer())
-            defineProperty(&BayerTP);
+            defineProperty(BayerTP);
 
-#if 0
-        defineProperty(&PrimaryCCD.RapidGuideSP);
 
-        if (HasGuideHead())
-            defineProperty(&GuideCCD.RapidGuideSP);
-
-        if (RapidGuideEnabled)
-        {
-            defineProperty(&PrimaryCCD.RapidGuideSetupSP);
-            defineProperty(&PrimaryCCD.RapidGuideDataNP);
-        }
-        if (GuiderRapidGuideEnabled)
-        {
-            defineProperty(&GuideCCD.RapidGuideSetupSP);
-            defineProperty(&GuideCCD.RapidGuideDataNP);
-        }
-#endif
         defineProperty(ScopeInfoNP);
 
-        defineProperty(&WorldCoordSP);
         defineProperty(&UploadSP);
 
-        if (UploadSettingsT[UPLOAD_DIR].text == nullptr)
-            IUSaveText(&UploadSettingsT[UPLOAD_DIR], getenv("HOME"));
+        if (UploadSettingsTP[UPLOAD_DIR].getText() == nullptr)
+            UploadSettingsTP[UPLOAD_DIR].setText(getenv("HOME"));
         defineProperty(&UploadSettingsTP);
 
 #ifdef HAVE_WEBSOCKET
@@ -623,28 +440,28 @@ bool CCD::updateProperties()
             defineProperty(&WebSocketSP);
 #endif
 
-        defineProperty(&FastExposureToggleSP);
-        defineProperty(&FastExposureCountNP);
+        defineProperty(FastExposureToggleSP);
+        defineProperty(FastExposureCountNP);
     }
     else
     {
-        deleteProperty(PrimaryCCD.ImageFrameNP.name);
+        deleteProperty(m_PrimarySensor.ImageFrameNP.name);
         if (CanBin() || CanSubFrame())
-            deleteProperty(PrimaryCCD.ResetSP.name);
+            deleteProperty(m_PrimarySensor.ResetSP.name);
 
-        deleteProperty(PrimaryCCD.ImagePixelSizeNP.name);
+        deleteProperty(m_PrimarySensor.ImagePixelSizeNP.name);
 
         deleteProperty(CaptureFormatSP.getName());
         deleteProperty(EncodeFormatSP.getName());
 
         if (CanBin())
-            deleteProperty(PrimaryCCD.ImageBinNP.name);
+            deleteProperty(m_PrimarySensor.ImageBinNP.name);
 
-        deleteProperty(PrimaryCCD.ImageExposureNP.name);
+        deleteProperty(m_PrimarySensor.ImageExposureNP.name);
         if (CanAbort())
-            deleteProperty(PrimaryCCD.AbortExposureSP.name);
-        deleteProperty(PrimaryCCD.FitsBP.name);
-        deleteProperty(PrimaryCCD.CompressSP.name);
+            deleteProperty(m_PrimarySensor.AbortExposureSP.name);
+        deleteProperty(m_PrimarySensor.FitsBP.name);
+        deleteProperty(m_PrimarySensor.CompressSP.name);
 
 #if 0
         deleteProperty(PrimaryCCD.RapidGuideSP.name);
@@ -690,7 +507,7 @@ bool CCD::updateProperties()
             deleteProperty(GuideNSNP.name);
             deleteProperty(GuideWENP.name);
         }
-        deleteProperty(PrimaryCCD.FrameTypeSP.name);
+        deleteProperty(m_PrimarySensor.FrameTypeSP.name);
         if (HasBayer())
             deleteProperty(BayerTP.name);
         deleteProperty(ScopeInfoNP);
@@ -727,7 +544,7 @@ bool CCD::updateProperties()
 
 bool CCD::ISSnoopDevice(XMLEle * root)
 {
-    XMLEle * ep           = nullptr;
+    XMLEle * ep = nullptr;
     const char * propName = findXMLAttValu(root, "name");
 
     if (IUSnoopNumber(root, &EqNP) == 0)
@@ -735,11 +552,11 @@ bool CCD::ISSnoopDevice(XMLEle * root)
         double newra, newdec;
         newra  = EqN[0].value;
         newdec = EqN[1].value;
-        if ((newra != RA) || (newdec != Dec))
+        if ((newra != m_MountJNowRA) || (newdec != m_MountJNowDE))
         {
             //IDLog("RA %4.2f  Dec %4.2f Snooped RA %4.2f  Dec %4.2f\n",RA,Dec,newra,newdec);
-            RA  = newra;
-            Dec = newdec;
+            m_MountJNowRA  = newra;
+            m_MountJNowDE = newdec;
         }
     }
     else if (IUSnoopNumber(root, &J2000EqNP) == 0)
@@ -747,61 +564,45 @@ bool CCD::ISSnoopDevice(XMLEle * root)
         float newra, newdec;
         newra  = J2000EqN[0].value;
         newdec = J2000EqN[1].value;
-        if ((newra != J2000RA) || (newdec != J2000DE))
+        if ((newra != m_MountJ2000RA) || (newdec != m_MountJ2000DE))
         {
             //    	    IDLog("J2000 RA %4.2f  Dec %4.2f Snooped RA %4.2f  Dec %4.2f\n",J2000RA,J2000DE,newra,newdec);
-            J2000RA = newra;
-            J2000DE = newdec;
+            m_MountJ2000RA = newra;
+            m_MountJ2000DE = newdec;
         }
-        J2000Valid = true;
+        m_MountJ2000Valid = true;
     }
     else if (!strcmp("TELESCOPE_PIER_SIDE", propName))
     {
         // set default to say we have no valid information from mount
-        pierSide = -1;
+        m_MountPierSide = -1;
         //  crack the message
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
         {
             const char * elemName = findXMLAttValu(ep, "name");
 
             if (!strcmp(elemName, "PIER_EAST") && !strcmp(pcdataXMLEle(ep), "On"))
-                pierSide = 1;
+                m_MountPierSide = 1;
             else if (!strcmp(elemName, "PIER_WEST") && !strcmp(pcdataXMLEle(ep), "On"))
-                pierSide = 0;
-        }
-    }
-    else if (!strcmp(propName, "TELESCOPE_INFO"))
-    {
-        for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
-        {
-            const char * name = findXMLAttValu(ep, "name");
-
-            if (!strcmp(name, "TELESCOPE_APERTURE"))
-            {
-                snoopedAperture = atof(pcdataXMLEle(ep));
-            }
-            else if (!strcmp(name, "TELESCOPE_FOCAL_LENGTH"))
-            {
-                snoopedFocalLength = atof(pcdataXMLEle(ep));
-            }
+                m_MountPierSide = 0;
         }
     }
     else if (!strcmp(propName, "FILTER_NAME"))
     {
         LOG_DEBUG("SNOOP: FILTER_NAME update...");
-        FilterNames.clear();
+        m_FilterNames.clear();
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
-            FilterNames.push_back(pcdataXMLEle(ep));
-        LOGF_DEBUG("SNOOP: FILTER_NAME -> %s", join(FilterNames, ", ").c_str());
+            m_FilterNames.push_back(pcdataXMLEle(ep));
+        LOGF_DEBUG("SNOOP: FILTER_NAME -> %s", join(m_FilterNames, ", ").c_str());
 
     }
     else if (!strcmp(propName, "FILTER_SLOT"))
     {
         LOG_DEBUG("SNOOP: FILTER_SLOT update...");
-        CurrentFilterSlot = -1;
+        m_FilterSlot = -1;
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
-            CurrentFilterSlot = atoi(pcdataXMLEle(ep));
-        LOGF_DEBUG("SNOOP: FILTER_SLOT is %d", CurrentFilterSlot);
+            m_FilterSlot = atoi(pcdataXMLEle(ep));
+        LOGF_DEBUG("SNOOP: FILTER_SLOT is %d", m_FilterSlot);
     }
     else if (!strcmp(propName, "SKY_QUALITY"))
     {
@@ -811,7 +612,7 @@ bool CCD::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "SKY_BRIGHTNESS"))
             {
-                MPSAS = atof(pcdataXMLEle(ep));
+                m_MPSAS = atof(pcdataXMLEle(ep));
                 break;
             }
         }
@@ -824,7 +625,7 @@ bool CCD::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "ANGLE"))
             {
-                RotatorAngle = atof(pcdataXMLEle(ep));
+                m_RotatorAngle = atof(pcdataXMLEle(ep));
                 break;
             }
         }
@@ -839,7 +640,7 @@ bool CCD::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "FOCUS_ABSOLUTE_POSITION"))
             {
-                FocuserPos = atol(pcdataXMLEle(ep));
+                m_FocuserAbsolutePosition = atol(pcdataXMLEle(ep));
                 break;
             }
         }
@@ -852,7 +653,7 @@ bool CCD::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "TEMPERATURE"))
             {
-                FocuserTemp = atof(pcdataXMLEle(ep));
+                m_FocuserTemperature = atof(pcdataXMLEle(ep));
                 break;
             }
         }
@@ -867,13 +668,13 @@ bool CCD::ISSnoopDevice(XMLEle * root)
 
             if (!strcmp(name, "LONG"))
             {
-                Longitude = atof(pcdataXMLEle(ep));
-                if (Longitude > 180)
-                    Longitude -= 360;
+                m_Longitude = atof(pcdataXMLEle(ep));
+                if (m_Longitude > 180)
+                    m_Longitude -= 360;
             }
             else if (!strcmp(name, "LAT"))
             {
-                Latitude = atof(pcdataXMLEle(ep));
+                m_Latitude = atof(pcdataXMLEle(ep));
             }
         }
     }
@@ -908,15 +709,15 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
             else
             {
                 LOG_DEBUG("No mount is set. Clearing all mount watchers.");
-                RA = std::numeric_limits<double>::quiet_NaN();
-                Dec = std::numeric_limits<double>::quiet_NaN();
-                J2000RA = std::numeric_limits<double>::quiet_NaN();
-                J2000DE = std::numeric_limits<double>::quiet_NaN();
-                Latitude = std::numeric_limits<double>::quiet_NaN();
-                Longitude = std::numeric_limits<double>::quiet_NaN();
-                Airmass = std::numeric_limits<double>::quiet_NaN();
-                Azimuth = std::numeric_limits<double>::quiet_NaN();
-                Altitude = std::numeric_limits<double>::quiet_NaN();
+                m_MountJNowRA = std::numeric_limits<double>::quiet_NaN();
+                m_MountJNowDE = std::numeric_limits<double>::quiet_NaN();
+                m_MountJ2000RA = std::numeric_limits<double>::quiet_NaN();
+                m_MountJ2000DE = std::numeric_limits<double>::quiet_NaN();
+                m_Latitude = std::numeric_limits<double>::quiet_NaN();
+                m_Longitude = std::numeric_limits<double>::quiet_NaN();
+                m_AirMass = std::numeric_limits<double>::quiet_NaN();
+                m_Azimuth = std::numeric_limits<double>::quiet_NaN();
+                m_Altitude = std::numeric_limits<double>::quiet_NaN();
             }
 
             if (strlen(ActiveDeviceT[ACTIVE_ROTATOR].text) > 0)
@@ -927,7 +728,7 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
             else
             {
                 LOG_DEBUG("No rotator is set. Clearing all rotator watchers.");
-                MPSAS = std::numeric_limits<double>::quiet_NaN();
+                m_MPSAS = std::numeric_limits<double>::quiet_NaN();
             }
 
             // JJ ed 2019-12-10
@@ -940,8 +741,8 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
             else
             {
                 LOG_DEBUG("No focuser is set. Clearing all focuser watchers.");
-                FocuserPos = -1;
-                FocuserTemp = std::numeric_limits<double>::quiet_NaN();
+                m_FocuserAbsolutePosition = -1;
+                m_FocuserTemperature = std::numeric_limits<double>::quiet_NaN();
             }
 
 
@@ -954,7 +755,7 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
             else
             {
                 LOG_DEBUG("No filter wheel is set. Clearing All filter wheel watchers.");
-                CurrentFilterSlot = -1;
+                m_FilterSlot = -1;
             }
 
             IDSnoopDevice(ActiveDeviceT[ACTIVE_SKYQUALITY].text, "SKY_QUALITY");
@@ -1075,38 +876,38 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
     {
         if (!strcmp(name, "CCD_EXPOSURE"))
         {
-            if (PrimaryCCD.getFrameType() != CCDChip::BIAS_FRAME &&
-                    (values[0] < PrimaryCCD.ImageExposureN[0].min || values[0] > PrimaryCCD.ImageExposureN[0].max))
+            if (m_PrimarySensor.getFrameType() != CCDChip::BIAS_FRAME &&
+                    (values[0] < m_PrimarySensor.ImageExposureN[0].min || values[0] > m_PrimarySensor.ImageExposureN[0].max))
             {
                 LOGF_ERROR("Requested exposure value (%g) seconds out of bounds [%g,%g].",
-                           values[0], PrimaryCCD.ImageExposureN[0].min, PrimaryCCD.ImageExposureN[0].max);
-                PrimaryCCD.ImageExposureNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageExposureNP, nullptr);
+                           values[0], m_PrimarySensor.ImageExposureN[0].min, m_PrimarySensor.ImageExposureN[0].max);
+                m_PrimarySensor.ImageExposureNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageExposureNP, nullptr);
                 return false;
             }
 
-            if (PrimaryCCD.getFrameType() == CCDChip::BIAS_FRAME)
-                PrimaryCCD.ImageExposureN[0].value = ExposureTime = PrimaryCCD.ImageExposureN[0].min;
+            if (m_PrimarySensor.getFrameType() == CCDChip::BIAS_FRAME)
+                m_PrimarySensor.ImageExposureN[0].value = m_ExposureTime = m_PrimarySensor.ImageExposureN[0].min;
             else
-                PrimaryCCD.ImageExposureN[0].value = ExposureTime = values[0];
+                m_PrimarySensor.ImageExposureN[0].value = m_ExposureTime = values[0];
 
             // Only abort when busy if we are not already in an exposure loops
             //if (PrimaryCCD.ImageExposureNP.s == IPS_BUSY && FastExposureToggleS[INDI_DISABLED].s == ISS_ON)
-            if (PrimaryCCD.ImageExposureNP.s == IPS_BUSY)
+            if (m_PrimarySensor.ImageExposureNP.s == IPS_BUSY)
             {
                 if (CanAbort() && AbortExposure() == false)
                     DEBUG(Logger::DBG_WARNING, "Warning: Aborting exposure failed.");
             }
 
-            if (StartExposure(ExposureTime))
+            if (StartExposure(m_ExposureTime))
             {
-                PrimaryCCD.ImageExposureNP.s = IPS_BUSY;
-                if (ExposureTime * 1000 < getCurrentPollingPeriod())
-                    setCurrentPollingPeriod(ExposureTime * 950);
+                m_PrimarySensor.ImageExposureNP.s = IPS_BUSY;
+                if (m_ExposureTime * 1000 < getCurrentPollingPeriod())
+                    setCurrentPollingPeriod(m_ExposureTime * 950);
             }
             else
-                PrimaryCCD.ImageExposureNP.s = IPS_ALERT;
-            IDSetNumber(&PrimaryCCD.ImageExposureNP, nullptr);
+                m_PrimarySensor.ImageExposureNP.s = IPS_ALERT;
+            IDSetNumber(&m_PrimarySensor.ImageExposureNP, nullptr);
             return true;
         }
 
@@ -1139,17 +940,17 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
         if (!strcmp(name, "CCD_BINNING"))
         {
             //  We are being asked to set camera binning
-            INumber * np = IUFindNumber(&PrimaryCCD.ImageBinNP, names[0]);
+            INumber * np = IUFindNumber(&m_PrimarySensor.ImageBinNP, names[0]);
             if (np == nullptr)
             {
-                PrimaryCCD.ImageBinNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageBinNP, nullptr);
+                m_PrimarySensor.ImageBinNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageBinNP, nullptr);
                 return false;
             }
             else if (values[0] == 0 || values[1] == 0)
             {
-                PrimaryCCD.ImageBinNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageBinNP, nullptr);
+                m_PrimarySensor.ImageBinNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageBinNP, nullptr);
                 LOGF_ERROR("%.fx%.f binning is invalid.", values[0], values[1]);
                 return false;
             }
@@ -1168,13 +969,13 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
 
             if (UpdateCCDBin(binx, biny))
             {
-                IUUpdateNumber(&PrimaryCCD.ImageBinNP, values, names, n);
-                PrimaryCCD.ImageBinNP.s = IPS_OK;
+                IUUpdateNumber(&m_PrimarySensor.ImageBinNP, values, names, n);
+                m_PrimarySensor.ImageBinNP.s = IPS_OK;
             }
             else
-                PrimaryCCD.ImageBinNP.s = IPS_ALERT;
+                m_PrimarySensor.ImageBinNP.s = IPS_ALERT;
 
-            IDSetNumber(&PrimaryCCD.ImageBinNP, nullptr);
+            IDSetNumber(&m_PrimarySensor.ImageBinNP, nullptr);
 
             return true;
         }
@@ -1191,8 +992,8 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
             }
             else if (values[0] == 0 || values[1] == 0)
             {
-                PrimaryCCD.ImageBinNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageBinNP, nullptr);
+                m_PrimarySensor.ImageBinNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageBinNP, nullptr);
                 LOGF_ERROR("%.fx%.f binning is invalid.", values[0], values[1]);
                 return false;
             }
@@ -1252,20 +1053,20 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
             if (x < 0 || y < 0 || w <= 0 || h <= 0)
             {
                 LOGF_ERROR("Invalid frame requested (%d,%d) (%d x %d)", x, y, w, h);
-                PrimaryCCD.ImageFrameNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageFrameNP, nullptr);
+                m_PrimarySensor.ImageFrameNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageFrameNP, nullptr);
                 return true;
             }
 
             if (UpdateCCDFrame(x, y, w, h))
             {
-                PrimaryCCD.ImageFrameNP.s = IPS_OK;
-                IUUpdateNumber(&PrimaryCCD.ImageFrameNP, values, names, n);
+                m_PrimarySensor.ImageFrameNP.s = IPS_OK;
+                IUUpdateNumber(&m_PrimarySensor.ImageFrameNP, values, names, n);
             }
             else
-                PrimaryCCD.ImageFrameNP.s = IPS_ALERT;
+                m_PrimarySensor.ImageFrameNP.s = IPS_ALERT;
 
-            IDSetNumber(&PrimaryCCD.ImageFrameNP, nullptr);
+            IDSetNumber(&m_PrimarySensor.ImageFrameNP, nullptr);
             return true;
         }
 
@@ -1391,22 +1192,22 @@ bool CCD::ISNewNumber(const char * dev, const char * name, double values[], char
         }
 
         // Primary CCD Info
-        if (!strcmp(name, PrimaryCCD.ImagePixelSizeNP.name))
+        if (!strcmp(name, m_PrimarySensor.ImagePixelSizeNP.name))
         {
-            if (IUUpdateNumber(&PrimaryCCD.ImagePixelSizeNP, values, names, n) == 0)
+            if (IUUpdateNumber(&m_PrimarySensor.ImagePixelSizeNP, values, names, n) == 0)
             {
-                PrimaryCCD.ImagePixelSizeNP.s = IPS_OK;
-                SetCCDParams(PrimaryCCD.ImagePixelSizeNP.np[CCDChip::CCD_MAX_X].value,
-                             PrimaryCCD.ImagePixelSizeNP.np[CCDChip::CCD_MAX_Y].value,
-                             PrimaryCCD.getBPP(),
-                             PrimaryCCD.ImagePixelSizeNP.np[CCDChip::CCD_PIXEL_SIZE_X].value,
-                             PrimaryCCD.ImagePixelSizeNP.np[CCDChip::CCD_PIXEL_SIZE_Y].value);
-                saveConfig(true, PrimaryCCD.ImagePixelSizeNP.name);
+                m_PrimarySensor.ImagePixelSizeNP.s = IPS_OK;
+                SetCCDParams(m_PrimarySensor.ImagePixelSizeNP.np[CCDChip::CCD_MAX_X].value,
+                             m_PrimarySensor.ImagePixelSizeNP.np[CCDChip::CCD_MAX_Y].value,
+                             m_PrimarySensor.getBPP(),
+                             m_PrimarySensor.ImagePixelSizeNP.np[CCDChip::CCD_PIXEL_SIZE_X].value,
+                             m_PrimarySensor.ImagePixelSizeNP.np[CCDChip::CCD_PIXEL_SIZE_Y].value);
+                saveConfig(true, m_PrimarySensor.ImagePixelSizeNP.name);
             }
             else
-                PrimaryCCD.ImagePixelSizeNP.s = IPS_ALERT;
+                m_PrimarySensor.ImagePixelSizeNP.s = IPS_ALERT;
 
-            IDSetNumber(&PrimaryCCD.ImagePixelSizeNP, nullptr);
+            IDSetNumber(&m_PrimarySensor.ImagePixelSizeNP, nullptr);
             return true;
         }
 
@@ -1506,7 +1307,7 @@ bool CCD::ISNewSwitch(const char * dev, const char * name, ISState * states, cha
                 FastExposureCountNP.s = IPS_IDLE;
                 IDSetNumber(&FastExposureCountNP, nullptr);
                 m_UploadTime = 0;
-                if (PrimaryCCD.isExposing())
+                if (m_PrimarySensor.isExposing())
                     AbortExposure();
             }
 
@@ -1542,56 +1343,35 @@ bool CCD::ISNewSwitch(const char * dev, const char * name, ISState * states, cha
         }
 #endif
 
-        // WCS Enable/Disable
-        if (!strcmp(name, WorldCoordSP.name))
-        {
-            IUUpdateSwitch(&WorldCoordSP, states, names, n);
-            WorldCoordSP.s = IPS_OK;
-
-            if (WorldCoordS[0].s == ISS_ON)
-            {
-                LOG_INFO("World Coordinate System is enabled.");
-                defineProperty(&CCDRotationNP);
-            }
-            else
-            {
-                LOG_INFO("World Coordinate System is disabled.");
-                deleteProperty(CCDRotationNP.name);
-            }
-
-            m_ValidCCDRotation = false;
-            IDSetSwitch(&WorldCoordSP, nullptr);
-        }
-
         // Primary Chip Frame Reset
-        if (strcmp(name, PrimaryCCD.ResetSP.name) == 0)
+        if (strcmp(name, m_PrimarySensor.ResetSP.name) == 0)
         {
-            IUResetSwitch(&PrimaryCCD.ResetSP);
-            PrimaryCCD.ResetSP.s = IPS_OK;
+            IUResetSwitch(&m_PrimarySensor.ResetSP);
+            m_PrimarySensor.ResetSP.s = IPS_OK;
             if (CanBin())
                 UpdateCCDBin(1, 1);
             if (CanSubFrame())
-                UpdateCCDFrame(0, 0, PrimaryCCD.getXRes(), PrimaryCCD.getYRes());
+                UpdateCCDFrame(0, 0, m_PrimarySensor.getXRes(), m_PrimarySensor.getYRes());
 
-            IDSetSwitch(&PrimaryCCD.ResetSP, nullptr);
+            IDSetSwitch(&m_PrimarySensor.ResetSP, nullptr);
             return true;
         }
 
         // Primary Chip Abort Expsoure
-        if (strcmp(name, PrimaryCCD.AbortExposureSP.name) == 0)
+        if (strcmp(name, m_PrimarySensor.AbortExposureSP.name) == 0)
         {
-            IUResetSwitch(&PrimaryCCD.AbortExposureSP);
+            IUResetSwitch(&m_PrimarySensor.AbortExposureSP);
 
             if (AbortExposure())
             {
-                PrimaryCCD.AbortExposureSP.s       = IPS_OK;
-                PrimaryCCD.ImageExposureNP.s       = IPS_IDLE;
-                PrimaryCCD.ImageExposureN[0].value = 0;
+                m_PrimarySensor.AbortExposureSP.s       = IPS_OK;
+                m_PrimarySensor.ImageExposureNP.s       = IPS_IDLE;
+                m_PrimarySensor.ImageExposureN[0].value = 0;
             }
             else
             {
-                PrimaryCCD.AbortExposureSP.s = IPS_ALERT;
-                PrimaryCCD.ImageExposureNP.s = IPS_ALERT;
+                m_PrimarySensor.AbortExposureSP.s = IPS_ALERT;
+                m_PrimarySensor.ImageExposureNP.s = IPS_ALERT;
             }
 
             setCurrentPollingPeriod(getPollingPeriod());
@@ -1605,8 +1385,8 @@ bool CCD::ISNewSwitch(const char * dev, const char * name, ISState * states, cha
                 IDSetNumber(&FastExposureCountNP, nullptr);
             }
 
-            IDSetSwitch(&PrimaryCCD.AbortExposureSP, nullptr);
-            IDSetNumber(&PrimaryCCD.ImageExposureNP, nullptr);
+            IDSetSwitch(&m_PrimarySensor.AbortExposureSP, nullptr);
+            IDSetNumber(&m_PrimarySensor.ImageExposureNP, nullptr);
 
             return true;
         }
@@ -1635,12 +1415,12 @@ bool CCD::ISNewSwitch(const char * dev, const char * name, ISState * states, cha
         }
 
         // Primary Chip Compression
-        if (strcmp(name, PrimaryCCD.CompressSP.name) == 0)
+        if (strcmp(name, m_PrimarySensor.CompressSP.name) == 0)
         {
-            IUUpdateSwitch(&PrimaryCCD.CompressSP, states, names, n);
-            PrimaryCCD.CompressSP.s = IPS_OK;
-            IDSetSwitch(&PrimaryCCD.CompressSP, nullptr);
-            PrimaryCCD.SendCompressed = PrimaryCCD.CompressS[INDI_ENABLED].s == ISS_ON;
+            IUUpdateSwitch(&m_PrimarySensor.CompressSP, states, names, n);
+            m_PrimarySensor.CompressSP.s = IPS_OK;
+            IDSetSwitch(&m_PrimarySensor.CompressSP, nullptr);
+            m_PrimarySensor.SendCompressed = m_PrimarySensor.CompressS[INDI_ENABLED].s == ISS_ON;
             return true;
         }
 
@@ -1655,33 +1435,33 @@ bool CCD::ISNewSwitch(const char * dev, const char * name, ISState * states, cha
         }
 
         // Primary Chip Frame Type
-        if (strcmp(name, PrimaryCCD.FrameTypeSP.name) == 0)
+        if (strcmp(name, m_PrimarySensor.FrameTypeSP.name) == 0)
         {
-            IUUpdateSwitch(&PrimaryCCD.FrameTypeSP, states, names, n);
-            PrimaryCCD.FrameTypeSP.s = IPS_OK;
-            if (PrimaryCCD.FrameTypeS[0].s == ISS_ON)
-                PrimaryCCD.setFrameType(CCDChip::LIGHT_FRAME);
-            else if (PrimaryCCD.FrameTypeS[1].s == ISS_ON)
+            IUUpdateSwitch(&m_PrimarySensor.FrameTypeSP, states, names, n);
+            m_PrimarySensor.FrameTypeSP.s = IPS_OK;
+            if (m_PrimarySensor.FrameTypeS[0].s == ISS_ON)
+                m_PrimarySensor.setFrameType(CCDChip::LIGHT_FRAME);
+            else if (m_PrimarySensor.FrameTypeS[1].s == ISS_ON)
             {
-                PrimaryCCD.setFrameType(CCDChip::BIAS_FRAME);
+                m_PrimarySensor.setFrameType(CCDChip::BIAS_FRAME);
                 if (HasShutter() == false)
                     DEBUG(Logger::DBG_WARNING,
                           "The CCD does not have a shutter. Cover the camera in order to take a bias frame.");
             }
-            else if (PrimaryCCD.FrameTypeS[2].s == ISS_ON)
+            else if (m_PrimarySensor.FrameTypeS[2].s == ISS_ON)
             {
-                PrimaryCCD.setFrameType(CCDChip::DARK_FRAME);
+                m_PrimarySensor.setFrameType(CCDChip::DARK_FRAME);
                 if (HasShutter() == false)
                     DEBUG(Logger::DBG_WARNING,
                           "The CCD does not have a shutter. Cover the camera in order to take a dark frame.");
             }
-            else if (PrimaryCCD.FrameTypeS[3].s == ISS_ON)
-                PrimaryCCD.setFrameType(CCDChip::FLAT_FRAME);
+            else if (m_PrimarySensor.FrameTypeS[3].s == ISS_ON)
+                m_PrimarySensor.setFrameType(CCDChip::FLAT_FRAME);
 
-            if (UpdateCCDFrameType(PrimaryCCD.getFrameType()) == false)
-                PrimaryCCD.FrameTypeSP.s = IPS_ALERT;
+            if (UpdateCCDFrameType(m_PrimarySensor.getFrameType()) == false)
+                m_PrimarySensor.FrameTypeSP.s = IPS_ALERT;
 
-            IDSetSwitch(&PrimaryCCD.FrameTypeSP, nullptr);
+            IDSetSwitch(&m_PrimarySensor.FrameTypeSP, nullptr);
 
             return true;
         }
@@ -1892,7 +1672,7 @@ bool CCD::AbortGuideExposure()
 bool CCD::UpdateCCDFrame(int x, int y, int w, int h)
 {
     // Just set value, unless HW layer overrides this and performs its own processing
-    PrimaryCCD.setFrame(x, y, w, h);
+    m_PrimarySensor.setFrame(x, y, w, h);
     return true;
 }
 
@@ -1905,14 +1685,14 @@ bool CCD::UpdateGuiderFrame(int x, int y, int w, int h)
 bool CCD::UpdateCCDBin(int hor, int ver)
 {
     // Just set value, unless HW layer overrides this and performs its own processing
-    PrimaryCCD.setBin(hor, ver);
+    m_PrimarySensor.setBin(hor, ver);
     // Reset size
     if (HasStreaming())
-        Streamer->setSize(PrimaryCCD.getSubW() / hor, PrimaryCCD.getSubH() / ver);
+        Streamer->setSize(m_PrimarySensor.getSubW() / hor, m_PrimarySensor.getSubH() / ver);
 
     // DSP
     if (HasDSP())
-        DSP->setSizes(2, new int[2] { PrimaryCCD.getSubW() / hor, PrimaryCCD.getSubH() / ver });
+        DSP->setSizes(2, new int[2] { m_PrimarySensor.getSubW() / hor, m_PrimarySensor.getSubH() / ver });
 
     return true;
 }
@@ -2013,9 +1793,9 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
             break;
     }
 
-    if (CurrentFilterSlot != -1 && CurrentFilterSlot <= static_cast<int>(FilterNames.size()))
+    if (m_FilterSlot != -1 && m_FilterSlot <= static_cast<int>(m_FilterNames.size()))
     {
-        fitsKeywords.push_back({"FILTER", FilterNames.at(CurrentFilterSlot - 1).c_str(), "Filter"});
+        fitsKeywords.push_back({"FILTER", m_FilterNames.at(m_FilterSlot - 1).c_str(), "Filter"});
     }
 
 #ifdef WITH_MINMAX
@@ -2042,25 +1822,25 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
     if (!std::isnan(effectiveAperture))
         fitsKeywords.push_back({"APTDIA", effectiveAperture, 3, "Telescope diameter (mm)"});
 
-    if (!std::isnan(MPSAS))
+    if (!std::isnan(m_MPSAS))
     {
         fitsKeywords.push_back({"MPSAS", MPSAS, 6, "Sky Quality (mag per arcsec^2)"});
     }
 
-    if (!std::isnan(RotatorAngle))
+    if (!std::isnan(m_RotatorAngle))
     {
-        fitsKeywords.push_back({"ROTATANG", RotatorAngle, 3, "Rotator angle in degrees"});
+        fitsKeywords.push_back({"ROTATANG", m_RotatorAngle, 3, "Rotator angle in degrees"});
     }
 
     // JJ ed 2020-03-28
     // If the focus position or temperature is set, add the information to the FITS header
-    if (FocuserPos != -1)
+    if (m_FocuserAbsolutePosition != -1)
     {
         fitsKeywords.push_back({"FOCUSPOS", FocuserPos, "Focus position in steps"});
     }
-    if (!std::isnan(FocuserTemp))
+    if (!std::isnan(m_FocuserTemperature))
     {
-        fitsKeywords.push_back({"FOCUSTEM", FocuserTemp, 3, "Focuser temperature in degrees C"});
+        fitsKeywords.push_back({"FOCUSTEM", m_FocuserTemperature, 3, "Focuser temperature in degrees C"});
     }
 
     // SCALE assuming square-pixels
@@ -2071,29 +1851,29 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
     }
 
 
-    if ( targetChip->getFrameType() == CCDChip::LIGHT_FRAME && !std::isnan(RA) && !std::isnan(Dec) && (std::isnan(J2000RA)
-            || std::isnan(J2000DE) || !J2000Valid) )
+    if ( targetChip->getFrameType() == CCDChip::LIGHT_FRAME && !std::isnan(m_MountJNowRA) && !std::isnan(m_MountJNowDE) && (std::isnan(m_MountJ2000RA)
+            || std::isnan(m_MountJ2000DE) || !m_MountJ2000Valid) )
     {
         INDI::IEquatorialCoordinates epochPos { 0, 0 }, J2000Pos { 0, 0 };
-        epochPos.rightascension  = RA;
-        epochPos.declination = Dec;
+        epochPos.rightascension  = m_MountJNowRA;
+        epochPos.declination = m_MountJNowDE;
 
         // Convert from JNow to J2000
         INDI::ObservedToJ2000(&epochPos, ln_get_julian_from_sys(), &J2000Pos);
 
-        J2000RA = J2000Pos.rightascension;
-        J2000DE = J2000Pos.declination;
+        m_MountJ2000RA = J2000Pos.rightascension;
+        m_MountJ2000DE = J2000Pos.declination;
     }
-    J2000Valid = false;  // enforce usage of EOD position if we receive no new epoch position
+    m_MountJ2000Valid = false;  // enforce usage of EOD position if we receive no new epoch position
 
-    if ( targetChip->getFrameType() == CCDChip::LIGHT_FRAME && !std::isnan(J2000RA) && !std::isnan(J2000DE) )
+    if ( targetChip->getFrameType() == CCDChip::LIGHT_FRAME && !std::isnan(m_MountJ2000RA) && !std::isnan(m_MountJ2000DE) )
     {
-        if (!std::isnan(Latitude) && !std::isnan(Longitude))
+        if (!std::isnan(m_Latitude) && !std::isnan(m_Longitude))
         {
             INDI::IEquatorialCoordinates epochPos { 0, 0 }, J2000Pos { 0, 0 };
 
-            J2000Pos.rightascension = J2000RA;
-            J2000Pos.declination = J2000DE;
+            J2000Pos.rightascension = m_MountJ2000RA;
+            J2000Pos.declination = m_MountJ2000DE;
 
             // Convert from JNow to J2000
             INDI::J2000toObserved(&J2000Pos, ln_get_julian_from_sys(), &epochPos);
@@ -2101,19 +1881,19 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
             // Horizontal Coords
             INDI::IHorizontalCoordinates horizontalPos;
             IGeographicCoordinates observer;
-            observer.latitude = Latitude;
-            observer.longitude = Longitude;
+            observer.latitude = m_Latitude;
+            observer.longitude = m_Longitude;
 
             EquatorialToHorizontal(&epochPos, &observer, ln_get_julian_from_sys(), &horizontalPos);
-            Azimuth = horizontalPos.azimuth;
-            Altitude = horizontalPos.altitude;
-            Airmass = ln_get_airmass(Altitude, 750);
+            m_Azimuth = horizontalPos.azimuth;
+            m_Altitude = horizontalPos.altitude;
+            m_AirMass = ln_get_airmass(m_Altitude, 750);
         }
 
         char ra_str[32] = {0}, de_str[32] = {0};
 
-        fs_sexa(ra_str, J2000RA, 2, 360000);
-        fs_sexa(de_str, J2000DE, 2, 360000);
+        fs_sexa(ra_str, m_MountJ2000RA, 2, 360000);
+        fs_sexa(de_str, m_MountJ2000DE, 2, 360000);
 
         char * raPtr = ra_str, *dePtr = de_str;
         while (*raPtr != '\0')
@@ -2129,26 +1909,26 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
             dePtr++;
         }
 
-        if (!std::isnan(Latitude) && !std::isnan(Longitude))
+        if (!std::isnan(m_Latitude) && !std::isnan(m_Longitude))
         {
             fitsKeywords.push_back({"SITELAT", Latitude, 6, "Latitude of the imaging site in degrees"});
-            fitsKeywords.push_back({"SITELONG", Longitude, 6, "Longitude of the imaging site in degrees"});
+            fitsKeywords.push_back({"SITELONG", m_Longitude, 6, "Longitude of the imaging site in degrees"});
         }
-        if (!std::isnan(Airmass))
+        if (!std::isnan(m_AirMass))
         {
             //fits_update_key_s(fptr, TDOUBLE, "AIRMASS", &Airmass, "Airmass", &status);
-            fitsKeywords.push_back({"AIRMASS", Airmass, 6, "Airmass"});
-            fitsKeywords.push_back({"OBJCTAZ", Azimuth, 6, "Azimuth of center of image in Degrees"});
-            fitsKeywords.push_back({"OBJCTALT", Altitude, 6, "Altitude of center of image in Degrees"});
+            fitsKeywords.push_back({"AIRMASS", m_AirMass, 6, "Airmass"});
+            fitsKeywords.push_back({"OBJCTAZ", m_Azimuth, 6, "Azimuth of center of image in Degrees"});
+            fitsKeywords.push_back({"OBJCTALT", m_Altitude, 6, "Altitude of center of image in Degrees"});
         }
         fitsKeywords.push_back({"OBJCTRA", ra_str, "Object J2000 RA in Hours"});
         fitsKeywords.push_back({"OBJCTDEC", de_str, "Object J2000 DEC in Degrees"});
 
-        fitsKeywords.push_back({"RA", J2000RA * 15, 6, "Object J2000 RA in Degrees"});
-        fitsKeywords.push_back({"DEC", J2000DE, 6, "Object J2000 DEC in Degrees"});
+        fitsKeywords.push_back({"RA", m_MountJ2000RA * 15, 6, "Object J2000 RA in Degrees"});
+        fitsKeywords.push_back({"DEC", m_MountJ2000DE, 6, "Object J2000 DEC in Degrees"});
 
         // pier side
-        switch (pierSide)
+        switch (m_MountPierSide)
         {
             case 0:
                 fitsKeywords.push_back({"PIERSIDE", "WEST", "West, looking East"});
@@ -2164,9 +1944,9 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
         // Add WCS Info
         if (WorldCoordS[0].s == ISS_ON && m_ValidCCDRotation && !std::isnan(effectiveFocalLength))
         {
-            double J2000RAHours = J2000RA * 15;
+            double J2000RAHours = m_MountJ2000RA * 15;
             fitsKeywords.push_back({"CRVAL1", J2000RAHours, 10, "CRVAL1"});
-            fitsKeywords.push_back({"CRVAL2", J2000DE, 10, "CRVAL1"});
+            fitsKeywords.push_back({"CRVAL2", m_MountJ2000DE, 10, "CRVAL1"});
 
             char radecsys[8] = "FK5";
             char ctype1[16]  = "RA---TAN";
@@ -2215,7 +1995,7 @@ void CCD::addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKey
         }
     }
 
-    fitsKeywords.push_back({"DATE-OBS", exposureStartTime, "UTC start date of observation"});
+    fitsKeywords.push_back({"DATE-OBS", m_ExposureStartTime, "UTC start date of observation"});
     fitsKeywords.push_back(FITSRecord("Generated by INDI"));
 }
 
@@ -2242,8 +2022,7 @@ bool CCD::ExposureCompletePrivate(CCDChip * targetChip)
     LOG_DEBUG("Exposure complete");
 
     // save information used for the fits header
-    exposureDuration = targetChip->getExposureDuration();
-    strncpy(exposureStartTime, targetChip->getExposureStartTime(), MAXINDINAME);
+    strncpy(m_ExposureStartTime, targetChip->getExposureStartTime(), MAXINDINAME);
 
     if(HasDSP())
     {
@@ -2313,7 +2092,7 @@ bool CCD::ExposureCompletePrivate(CCDChip * targetChip)
             /*DEBUGF(Logger::DBG_DEBUG, "Exposure complete. Image Depth: %s. Width: %d Height: %d nelements: %d", bit_depth.c_str(), naxes[0],
                     naxes[1], nelements);*/
 
-            std::unique_lock<std::mutex> guard(ccdBufferLock);
+            std::unique_lock<std::mutex> guard(m_BufferLock);
 
             // 8640 = 2880 * 3 which is sufficient for most cases.
             uint32_t size = 8640 + nelements * (targetChip->getBPP() / 8);
@@ -2468,7 +2247,7 @@ bool CCD::ExposureCompletePrivate(CCDChip * targetChip)
                     image.setColorSpace(LibXISF::Image::RGB);
                 }
 
-                std::unique_lock<std::mutex> guard(ccdBufferLock);
+                std::unique_lock<std::mutex> guard(m_BufferLock);
                 std::memcpy(image.imageData(), targetChip->getFrameBuffer(), image.imageDataSize());
                 xisfWriter.writeImage(image);
 
@@ -2493,7 +2272,7 @@ bool CCD::ExposureCompletePrivate(CCDChip * targetChip)
             // If image extension was set to fits (default), change if bin if not already set to another format by the driver.
             if (!strcmp(targetChip->getImageExtension(), "fits"))
                 targetChip->setImageExtension("bin");
-            std::unique_lock<std::mutex> guard(ccdBufferLock);
+            std::unique_lock<std::mutex> guard(m_BufferLock);
             bool rc = uploadFile(targetChip, targetChip->getFrameBuffer(), targetChip->getFrameBufferSize(), sendImage,
                                  saveImage);
             guard.unlock();
@@ -2692,17 +2471,17 @@ bool CCD::processFastExposure(CCDChip * targetChip)
             {
                 if (FastExposureCountNP.s != IPS_BUSY)
                 {
-                    FastExposureToggleStartup = std::chrono::system_clock::now();
+                    m_FastExposureToggleStartup = std::chrono::system_clock::now();
                 }
                 else
                 {
                     auto end = std::chrono::system_clock::now();
 
-                    m_UploadTime = (std::chrono::duration_cast<std::chrono::milliseconds>(end - FastExposureToggleStartup)).count() / 1000.0 -
+                    m_UploadTime = (std::chrono::duration_cast<std::chrono::milliseconds>(end - m_FastExposureToggleStartup)).count() / 1000.0 -
                                    duration;
                     LOGF_DEBUG("Image download and upload/save took %.3f seconds.", m_UploadTime);
 
-                    FastExposureToggleStartup = end;
+                    m_FastExposureToggleStartup = end;
                 }
             }
 
@@ -2713,9 +2492,9 @@ bool CCD::processFastExposure(CCDChip * targetChip)
             if (UploadS[UPLOAD_LOCAL].s == ISS_ON || m_UploadTime < duration)
             {
                 if (StartExposure(duration))
-                    PrimaryCCD.ImageExposureNP.s = IPS_BUSY;
+                    m_PrimarySensor.ImageExposureNP.s = IPS_BUSY;
                 else
-                    PrimaryCCD.ImageExposureNP.s = IPS_ALERT;
+                    m_PrimarySensor.ImageExposureNP.s = IPS_ALERT;
                 if (duration * 1000 < getCurrentPollingPeriod())
                     setCurrentPollingPeriod(duration * 950);
             }
@@ -2724,8 +2503,8 @@ bool CCD::processFastExposure(CCDChip * targetChip)
                 LOGF_ERROR("Rapid exposure not possible since upload time is %.2f seconds while exposure time is %.2f seconds.",
                            m_UploadTime,
                            duration);
-                PrimaryCCD.ImageExposureNP.s = IPS_ALERT;
-                IDSetNumber(&PrimaryCCD.ImageExposureNP, nullptr);
+                m_PrimarySensor.ImageExposureNP.s = IPS_ALERT;
+                IDSetNumber(&m_PrimarySensor.ImageExposureNP, nullptr);
                 FastExposureCountN[0].value = 1;
                 FastExposureCountNP.s = IPS_IDLE;
                 IDSetNumber(&FastExposureCountNP, nullptr);
@@ -2746,12 +2525,12 @@ bool CCD::processFastExposure(CCDChip * targetChip)
 
 void CCD::SetCCDParams(int x, int y, int bpp, float xf, float yf)
 {
-    PrimaryCCD.setResolution(x, y);
-    PrimaryCCD.setFrame(0, 0, x, y);
+    m_PrimarySensor.setResolution(x, y);
+    m_PrimarySensor.setFrame(0, 0, x, y);
     if (CanBin())
-        PrimaryCCD.setBin(1, 1);
-    PrimaryCCD.setPixelSize(xf, yf);
-    PrimaryCCD.setBPP(bpp);
+        m_PrimarySensor.setBin(1, 1);
+    m_PrimarySensor.setPixelSize(xf, yf);
+    m_PrimarySensor.setBPP(bpp);
 }
 
 void CCD::SetGuiderParams(int x, int y, int bpp, float xf, float yf)
@@ -2773,10 +2552,10 @@ bool CCD::saveConfigItems(FILE * fp)
     IUSaveConfigText(fp, &UploadSettingsTP);
     IUSaveConfigSwitch(fp, &FastExposureToggleSP);
 
-    IUSaveConfigSwitch(fp, &PrimaryCCD.CompressSP);
+    IUSaveConfigSwitch(fp, &m_PrimarySensor.CompressSP);
 
-    if (PrimaryCCD.getCCDInfo()->p != IP_RO)
-        IUSaveConfigNumber(fp, PrimaryCCD.getCCDInfo());
+    if (m_PrimarySensor.getCCDInfo()->p != IP_RO)
+        IUSaveConfigNumber(fp, m_PrimarySensor.getCCDInfo());
 
     CaptureFormatSP.save(fp);
     EncodeFormatSP.save(fp);
@@ -2790,11 +2569,11 @@ bool CCD::saveConfigItems(FILE * fp)
         IUSaveConfigNumber(fp, &GuideCCD.ImageBinNP);
     }
 
-    if (CanSubFrame() && PrimaryCCD.ImageFrameN[2].value > 0)
-        IUSaveConfigNumber(fp, &PrimaryCCD.ImageFrameNP);
+    if (CanSubFrame() && m_PrimarySensor.ImageFrameN[2].value > 0)
+        IUSaveConfigNumber(fp, &m_PrimarySensor.ImageFrameNP);
 
     if (CanBin())
-        IUSaveConfigNumber(fp, &PrimaryCCD.ImageBinNP);
+        IUSaveConfigNumber(fp, &m_PrimarySensor.ImageBinNP);
 
     if (HasBayer())
         IUSaveConfigText(fp, &BayerTP);

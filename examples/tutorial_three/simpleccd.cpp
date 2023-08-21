@@ -108,8 +108,8 @@ void SimpleCCD::setupParams()
     SetCCDParams(1280, 1024, 8, 5.4, 5.4);
 
     // Let's calculate how much memory we need for the primary CCD buffer
-    uint32_t nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
-    PrimaryCCD.setFrameBufferSize(nbuf);
+    uint32_t nbuf = m_PrimarySensor.getXRes() * m_PrimarySensor.getYRes() * m_PrimarySensor.getBPP() / 8;
+    m_PrimarySensor.setFrameBufferSize(nbuf);
 }
 
 /**************************************************************************************
@@ -120,7 +120,7 @@ bool SimpleCCD::StartExposure(float duration)
     ExposureRequest = duration;
 
     // Since we have only have one CCD with one chip, we set the exposure duration of the primary CCD
-    PrimaryCCD.setExposureDuration(duration);
+    m_PrimarySensor.setExposureDuration(duration);
 
     ExposureTimer.start();
     InExposure = true;
@@ -177,7 +177,7 @@ void SimpleCCD::TimerHit()
             IDMessage(getDeviceName(), "Exposure done, downloading image...");
 
             // Set exposure left to zero
-            PrimaryCCD.setExposureLeft(0);
+            m_PrimarySensor.setExposureLeft(0);
 
             // We're no longer exposing...
             InExposure = false;
@@ -187,7 +187,7 @@ void SimpleCCD::TimerHit()
         }
         else
             // Just update time left in client
-            PrimaryCCD.setExposureLeft(timeleft);
+            m_PrimarySensor.setExposureLeft(timeleft);
     }
 
     // TemperatureNP is defined in INDI::CCD
@@ -230,11 +230,11 @@ void SimpleCCD::TimerHit()
 void SimpleCCD::grabImage()
 {
     // Let's get a pointer to the frame buffer
-    uint8_t *image = PrimaryCCD.getFrameBuffer();
+    uint8_t *image = m_PrimarySensor.getFrameBuffer();
 
     // Get width and height
-    int width  = PrimaryCCD.getSubW() / PrimaryCCD.getBinX() * PrimaryCCD.getBPP() / 8;
-    int height = PrimaryCCD.getSubH() / PrimaryCCD.getBinY();
+    int width  = m_PrimarySensor.getSubW() / m_PrimarySensor.getBinX() * m_PrimarySensor.getBPP() / 8;
+    int height = m_PrimarySensor.getSubH() / m_PrimarySensor.getBinY();
 
     // Fill buffer with random pattern
     for (int i = 0; i < height; i++)
@@ -244,5 +244,5 @@ void SimpleCCD::grabImage()
     IDMessage(getDeviceName(), "Download complete.");
 
     // Let INDI::CCD know we're done filling the image buffer
-    ExposureComplete(&PrimaryCCD);
+    ExposureComplete(&m_PrimarySensor);
 }

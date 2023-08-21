@@ -36,8 +36,8 @@ static std::unique_ptr<GuideSim> ccd(new GuideSim());
 
 GuideSim::GuideSim()
 {
-    currentRA  = RA;
-    currentDE = Dec;
+    currentRA  = m_MountJNowRA;
+    currentDE = m_MountJNowDE;
 
     streamPredicate = 0;
     terminateThread = false;
@@ -73,12 +73,12 @@ bool GuideSim::SetupParms()
     king_theta = SimulatorSettingsN[15].value * 0.0174532925;
     TimeFactor = SimulatorSettingsN[16].value;
 
-    nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
+    nbuf = m_PrimarySensor.getXRes() * m_PrimarySensor.getYRes() * m_PrimarySensor.getBPP() / 8;
     //nbuf += 512;
-    PrimaryCCD.setFrameBufferSize(nbuf);
+    m_PrimarySensor.setFrameBufferSize(nbuf);
 
     Streamer->setPixelFormat(INDI_MONO, 16);
-    Streamer->setSize(PrimaryCCD.getXRes(), PrimaryCCD.getYRes());
+    Streamer->setSize(m_PrimarySensor.getXRes(), m_PrimarySensor.getYRes());
 
     return true;
 }
@@ -275,20 +275,20 @@ bool GuideSim::StartExposure(float duration)
     AbortPrimaryFrame = false;
     ExposureRequest   = duration;
 
-    PrimaryCCD.setExposureDuration(duration);
+    m_PrimarySensor.setExposureDuration(duration);
     gettimeofday(&ExpStart, nullptr);
     //  Leave the proper time showing for the draw routines
-    DrawCcdFrame(&PrimaryCCD);
+    DrawCcdFrame(&m_PrimarySensor);
     //  Now compress the actual wait time
     ExposureRequest = duration * TimeFactor;
-    InExposure      = true;
+    m_ExposureActive      = true;
 
     return true;
 }
 
 bool GuideSim::AbortExposure()
 {
-    if (!InExposure)
+    if (!m_ExposureActive)
         return true;
 
     AbortPrimaryFrame = true;
@@ -321,11 +321,11 @@ void GuideSim::TimerHit()
     if (!isConnected())
         return;
 
-    if (InExposure && ToggleTimeoutSP.findOnSwitchIndex() == INDI_DISABLED)
+    if (m_ExposureActive && ToggleTimeoutSP.findOnSwitchIndex() == INDI_DISABLED)
     {
         if (AbortPrimaryFrame)
         {
-            InExposure        = false;
+            m_ExposureActive        = false;
             AbortPrimaryFrame = false;
         }
         else
@@ -337,15 +337,15 @@ void GuideSim::TimerHit()
             if (timeleft < 0)
                 timeleft = 0;
 
-            PrimaryCCD.setExposureLeft(timeleft);
+            m_PrimarySensor.setExposureLeft(timeleft);
 
             if (timeleft < 1.0)
             {
                 if (timeleft <= 0.001)
                 {
-                    InExposure = false;
-                    PrimaryCCD.binFrame();
-                    ExposureComplete(&PrimaryCCD);
+                    m_ExposureActive = false;
+                    m_PrimarySensor.binFrame();
+                    ExposureComplete(&m_PrimarySensor);
                 }
                 else
                 {
@@ -394,7 +394,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 
     exposure_time *= (1 + sqrt(GainN[0].value));
 
-    auto targetFocalLength = ScopeInfoNP[FocalLength].getValue() > 0 ? ScopeInfoNP[FocalLength].getValue() : snoopedFocalLength;
+    auto targetFocalLength = ScopeInfoNP[FocalLength].getValue();
 
     if (ShowStarField)
     {
@@ -459,7 +459,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         double theta = rotationCW + 270;
         if (theta > 360)
             theta -= 360;
-        if (pierSide == 1)
+        if (m_MountPierSide == 1)
             theta -= 180;       // rotate 180 if on East
         else if (theta < -360)
             theta += 360;
@@ -484,8 +484,8 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         if (!usePE)
         {
 #endif
-            currentRA  = RA;
-            currentDE = Dec;
+            currentRA  = m_MountJNowRA;
+            currentDE = m_MountJNowDE;
 
             if (std::isnan(currentRA))
             {
@@ -560,9 +560,9 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
             // Replace LOGF_DEBUG by IDLog
             //IDLog("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", king_gamma); // without variable, macro expansion fails
             char JnRAStr[64] = {0};
-            fs_sexa(JnRAStr, RA, 2, 360000);
+            fs_sexa(JnRAStr, m_MountJNowRA, 2, 360000);
             char JnDecStr[64] = {0};
-            fs_sexa(JnDecStr, Dec, 2, 360000);
+            fs_sexa(JnDecStr, m_MountJNowDE, 2, 360000);
             //            IDLog("Longitude      : %8.3f, Latitude    : %8.3f\n", this->Longitude, this->Latitude);
             //            IDLog("King gamma     : %8.3f, King theta  : %8.3f\n", king_gamma / 0.0174532925, king_theta / 0.0174532925);
             //            IDLog("Jnow RA        : %11s,       dec: %11s\n", JnRAStr, JnDecStr );
@@ -576,10 +576,10 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 
             //double J2rar = J2ra * 0.0174532925;
             double J2decr = J2dec * 0.0174532925;
-            double sid  = get_local_sidereal_time(this->Longitude);
+            double sid  = get_local_sidereal_time(this->m_Longitude);
             // HA is what is observed, that is Jnow
             // ToDo check if mean or apparent
-            double JnHAr  = get_local_hour_angle(sid, RA) * 15. * 0.0174532925;
+            double JnHAr  = get_local_hour_angle(sid, m_MountJNowRA) * 15. * 0.0174532925;
 
             char sidStr[64] = {0};
             fs_sexa(sidStr, sid, 2, 3600);
@@ -634,7 +634,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         //  if this is a light frame, we need a star field drawn
         INDI::CCDChip::CCD_FRAME ftype = targetChip->getFrameType();
 
-        std::unique_lock<std::mutex> guard(ccdBufferLock);
+        std::unique_lock<std::mutex> guard(m_BufferLock);
 
         //  Start by clearing the frame buffer
         memset(targetChip->getFrameBuffer(), 0, targetChip->getFrameBufferSize());
@@ -1210,8 +1210,8 @@ bool GuideSim::StopStreaming()
 
 bool GuideSim::UpdateCCDFrame(int x, int y, int w, int h)
 {
-    long bin_width  = w / PrimaryCCD.getBinX();
-    long bin_height = h / PrimaryCCD.getBinY();
+    long bin_width  = w / m_PrimarySensor.getBinX();
+    long bin_height = h / m_PrimarySensor.getBinY();
 
     bin_width  = bin_width - (bin_width % 2);
     bin_height = bin_height - (bin_height % 2);
@@ -1229,8 +1229,8 @@ bool GuideSim::UpdateCCDBin(int hor, int ver)
         return false;
     }
 
-    long bin_width  = PrimaryCCD.getSubW() / hor;
-    long bin_height = PrimaryCCD.getSubH() / ver;
+    long bin_width  = m_PrimarySensor.getSubW() / hor;
+    long bin_height = m_PrimarySensor.getSubH() / ver;
 
     bin_width  = bin_width - (bin_width % 2);
     bin_height = bin_height - (bin_height % 2);
@@ -1268,9 +1268,9 @@ void * GuideSim::streamVideo()
 
 
         // 16 bit
-        DrawCcdFrame(&PrimaryCCD);
+        DrawCcdFrame(&m_PrimarySensor);
 
-        PrimaryCCD.binFrame();
+        m_PrimarySensor.binFrame();
 
         finish = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = finish - start;
@@ -1278,8 +1278,8 @@ void * GuideSim::streamVideo()
         if (elapsed.count() < ExposureRequest)
             usleep(fabs(ExposureRequest - elapsed.count()) * 1e6);
 
-        uint32_t size = PrimaryCCD.getFrameBufferSize() / (PrimaryCCD.getBinX() * PrimaryCCD.getBinY());
-        Streamer->newFrame(PrimaryCCD.getFrameBuffer(), size);
+        uint32_t size = m_PrimarySensor.getFrameBufferSize() / (m_PrimarySensor.getBinX() * m_PrimarySensor.getBinY());
+        Streamer->newFrame(m_PrimarySensor.getFrameBuffer(), size);
 
         start = std::chrono::high_resolution_clock::now();
     }

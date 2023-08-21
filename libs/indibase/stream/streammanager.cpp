@@ -366,7 +366,7 @@ StreamManagerPrivate::FrameInfo StreamManagerPrivate::updateSourceFrameInfo()
     if(currentDevice->getDriverInterface() & INDI::DefaultDevice::CCD_INTERFACE)
     {
         srcFrameInfo = FrameInfo(
-                           dynamic_cast<const INDI::CCD*>(currentDevice)->PrimaryCCD,
+                           dynamic_cast<const INDI::CCD*>(currentDevice)->m_PrimarySensor,
                            components * bytesPerComponent
                        );
     }
@@ -632,12 +632,12 @@ bool StreamManagerPrivate::startRecording()
     if(currentDevice->getDriverInterface() & INDI::DefaultDevice::CCD_INTERFACE)
     {
         /* get filter name for pattern substitution */
-        if (dynamic_cast<INDI::CCD*>(currentDevice)->CurrentFilterSlot != -1
-                && dynamic_cast<INDI::CCD*>(currentDevice)->CurrentFilterSlot <= static_cast<int>(dynamic_cast<INDI::CCD*>
-                        (currentDevice)->FilterNames.size()))
+        if (dynamic_cast<INDI::CCD*>(currentDevice)->m_FilterSlot != -1
+                && dynamic_cast<INDI::CCD*>(currentDevice)->m_FilterSlot <= static_cast<int>(dynamic_cast<INDI::CCD*>
+                        (currentDevice)->m_FilterNames.size()))
         {
-            filtername      = dynamic_cast<INDI::CCD*>(currentDevice)->FilterNames.at(dynamic_cast<INDI::CCD*>
-                              (currentDevice)->CurrentFilterSlot - 1);
+            filtername      = dynamic_cast<INDI::CCD*>(currentDevice)->m_FilterNames.at(dynamic_cast<INDI::CCD*>
+                              (currentDevice)->m_FilterSlot - 1);
             patterns["_F_"] = filtername;
             LOGF_DEBUG("Adding filter pattern %s", filtername.c_str());
         }
@@ -990,7 +990,7 @@ bool StreamManagerPrivate::ISNewNumber(const char * dev, const char * name, doub
 
         if(currentDevice->getDriverInterface() & INDI::DefaultDevice::CCD_INTERFACE)
         {
-            srcFrameInfo = FrameInfo(dynamic_cast<const INDI::CCD*>(currentDevice)->PrimaryCCD);
+            srcFrameInfo = FrameInfo(dynamic_cast<const INDI::CCD*>(currentDevice)->m_PrimarySensor);
         }
         else if(currentDevice->getDriverInterface() & INDI::DefaultDevice::SENSOR_INTERFACE)
         {
@@ -1211,7 +1211,7 @@ bool StreamManagerPrivate::uploadStream(const uint8_t * buffer, uint32_t nbytes)
 
     if(currentDevice->getDriverInterface() & INDI::DefaultDevice::CCD_INTERFACE)
     {
-        if (encoder->upload(&imageBP[0], buffer, nbytes, dynamic_cast<INDI::CCD*>(currentDevice)->PrimaryCCD.isCompressed()))
+        if (encoder->upload(&imageBP[0], buffer, nbytes, dynamic_cast<INDI::CCD*>(currentDevice)->m_PrimarySensor.isCompressed()))
         {
 #ifdef HAVE_WEBSOCKET
             if (dynamic_cast<INDI::CCD*>(currentDevice)->HasWebSocket()
