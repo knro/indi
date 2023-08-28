@@ -98,6 +98,13 @@ class PropertyBasic : public INDI::Property
          */
         void save(FILE *f) const;
 
+        /**
+         * @brief Copy XML property values if property name matches.
+         * @param root Root of XML property to decode.
+         * @return True if property is snooped, false otherwise.
+         */
+        bool snoop(XMLEle *root);
+
         void vapply(const char *format, va_list args) const;
         void vdefine(const char *format, va_list args) const;
 

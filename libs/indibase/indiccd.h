@@ -658,20 +658,18 @@ class CCD : public DefaultDevice, GuiderInterface
 
 
         /**
-         * @brief EqNP Snoop property to read the equatorial coordinates of the mount.
+         * @brief SnoopedEqNP Snoop property to read the equatorial coordinates of the mount.
          * ActiveDeviceTP defines snoop devices and the driver listens to this property emitted
          * by the mount driver if specified. It is important to generate a proper FITS header.
          */
-        INumberVectorProperty EqNP;
-        INumber EqN[2];
+        INDI::PropertyNumber SnoopedEqNP {2};
 
         /**
-         * @brief J200EqNP Snoop property to read the equatorial J2000 coordinates of the mount.
+         * @brief SnoopedJ2000EqNP Snoop property to read the equatorial J2000 coordinates of the mount.
          * ActiveDeviceTP defines snoop devices and the driver listens to this property emitted
          * by the mount driver if specified. It is important to generate a proper FITS header.
          */
-        INumberVectorProperty J2000EqNP;
-        INumber J2000EqN[2];
+        INDI::PropertyNumber SnoopedJ2000EqNP {2};
 
         /**
          * @brief ActiveDeviceTP defines 4 devices the camera driver can listen to (snoop) for

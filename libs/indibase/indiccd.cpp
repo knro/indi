@@ -146,83 +146,71 @@ bool CCD::initProperties()
     /**********************************************/
 
     // Primary CCD Region-Of-Interest (ROI)
-    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_X], "X", "Left ", "%4.0f", 0, 0.0, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_Y], "Y", "Top", "%4.0f", 0, 0, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_W], "WIDTH", "Width", "%4.0f", 0, 0.0, 0, 0.0);
-    IUFillNumber(&m_PrimarySensor.ImageFrameN[CCDChip::FRAME_H], "HEIGHT", "Height", "%4.0f", 0, 0, 0, 0.0);
-    IUFillNumberVector(&m_PrimarySensor.ImageFrameNP, m_PrimarySensor.ImageFrameN, 4, getDeviceName(), "CCD_FRAME", "Frame",
-                       IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
+    m_PrimarySensor.ImageFrameNP[CCDChip::FRAME_X].fill("X", "Left ", "%4.0f", 0, 0.0, 0, 0);
+    m_PrimarySensor.ImageFrameNP[CCDChip::FRAME_Y].fill("Y", "Top", "%4.0f", 0, 0, 0, 0);
+    m_PrimarySensor.ImageFrameNP[CCDChip::FRAME_W].fill("WIDTH", "Width", "%4.0f", 0, 0.0, 0, 0.0);
+    m_PrimarySensor.ImageFrameNP[CCDChip::FRAME_H].fill("HEIGHT", "Height", "%4.0f", 0, 0, 0, 0.0);
+    m_PrimarySensor.ImageFrameNP.fill(getDeviceName(), "CCD_FRAME", "Frame", IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Frame Type
-    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::LIGHT_FRAME], "FRAME_LIGHT", "Light", ISS_ON);
-    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::BIAS_FRAME], "FRAME_BIAS", "Bias", ISS_OFF);
-    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::DARK_FRAME], "FRAME_DARK", "Dark", ISS_OFF);
-    IUFillSwitch(&m_PrimarySensor.FrameTypeS[CCDChip::FLAT_FRAME], "FRAME_FLAT", "Flat", ISS_OFF);
-    IUFillSwitchVector(&m_PrimarySensor.FrameTypeSP, m_PrimarySensor.FrameTypeS, 4, getDeviceName(), "CCD_FRAME_TYPE",
-                       "Type", IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    m_PrimarySensor.FrameTypeSP[CCDChip::LIGHT_FRAME].fill("FRAME_LIGHT", "Light", ISS_ON);
+    m_PrimarySensor.FrameTypeSP[CCDChip::BIAS_FRAME].fill("FRAME_BIAS", "Bias", ISS_OFF);
+    m_PrimarySensor.FrameTypeSP[CCDChip::DARK_FRAME].fill("FRAME_DARK", "Dark", ISS_OFF);
+    m_PrimarySensor.FrameTypeSP[CCDChip::FLAT_FRAME].fill("FRAME_FLAT", "Flat", ISS_OFF);
+    m_PrimarySensor.FrameTypeSP.fill(getDeviceName(), "CCD_FRAME_TYPE", "Type", IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     // Primary CCD Exposure
-    IUFillNumber(&m_PrimarySensor.ImageExposureN[0], "CCD_EXPOSURE_VALUE", "Duration (s)", "%5.2f", 0.01, 3600, 1.0, 1.0);
-    IUFillNumberVector(&m_PrimarySensor.ImageExposureNP, m_PrimarySensor.ImageExposureN, 1, getDeviceName(), "CCD_EXPOSURE",
-                       "Expose", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+    m_PrimarySensor.ImageExposureNP[0].fill("CCD_EXPOSURE_VALUE", "Duration (s)", "%5.2f", 0.01, 3600, 1.0, 1.0);
+    m_PrimarySensor.ImageExposureNP.fill(getDeviceName(), "CCD_EXPOSURE", "Expose", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Abort
-    IUFillSwitch(&m_PrimarySensor.AbortExposureS[0], "ABORT", "Abort", ISS_OFF);
-    IUFillSwitchVector(&m_PrimarySensor.AbortExposureSP, m_PrimarySensor.AbortExposureS, 1, getDeviceName(), "CCD_ABORT_EXPOSURE",
-                       "Abort", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+    m_PrimarySensor.AbortExposureSP[0].fill("ABORT", "Abort", ISS_OFF);
+    m_PrimarySensor.AbortExposureSP.fill(getDeviceName(), "CCD_ABORT_EXPOSURE", "Abort", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
     // Primary CCD Binning
-    IUFillNumber(&m_PrimarySensor.ImageBinN[0], "HOR_BIN", "X", "%2.0f", 1, 4, 1, 1);
-    IUFillNumber(&m_PrimarySensor.ImageBinN[1], "VER_BIN", "Y", "%2.0f", 1, 4, 1, 1);
-    IUFillNumberVector(&m_PrimarySensor.ImageBinNP, m_PrimarySensor.ImageBinN, 2, getDeviceName(), "CCD_BINNING", "Binning",
-                       IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
+    m_PrimarySensor.ImageBinNP[0].fill("HOR_BIN", "X", "%2.0f", 1, 4, 1, 1);
+    m_PrimarySensor.ImageBinNP[1].fill("VER_BIN", "Y", "%2.0f", 1, 4, 1, 1);
+    m_PrimarySensor.ImageBinNP.fill(getDeviceName(), "CCD_BINNING", "Binning", IMAGE_SETTINGS_TAB, IP_RW, 60, IPS_IDLE);
 
     // Primary CCD Info
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_MAX_X], "CCD_MAX_X", "Max. Width", "%.f", 1, 16000, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_MAX_Y], "CCD_MAX_Y", "Max. Height", "%.f", 1, 16000, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE], "CCD_PIXEL_SIZE", "Pixel size (um)", "%.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_X], "CCD_PIXEL_SIZE_X", "Pixel size X", "%.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_PIXEL_SIZE_Y], "CCD_PIXEL_SIZE_Y", "Pixel size Y", "%.2f", 1,
-                 40, 0, 0);
-    IUFillNumber(&m_PrimarySensor.ImagePixelSizeN[CCDChip::CCD_BITSPERPIXEL], "CCD_BITSPERPIXEL", "Bits per pixel", "%.f",
-                 8, 64, 0, 0);
-    IUFillNumberVector(&m_PrimarySensor.ImagePixelSizeNP, m_PrimarySensor.ImagePixelSizeN, 6, getDeviceName(), "CCD_INFO",
-                       "CCD Information", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_MAX_X].fill("CCD_MAX_X", "Max. Width", "%.f", 1, 16000, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_MAX_Y].fill("CCD_MAX_Y", "Max. Height", "%.f", 1, 16000, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_PIXEL_SIZE].fill("CCD_PIXEL_SIZE", "Pixel size (um)", "%.2f", 1, 40, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_PIXEL_SIZE_X].fill("CCD_PIXEL_SIZE_X", "Pixel size X", "%.2f", 1, 40, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_PIXEL_SIZE_Y].fill("CCD_PIXEL_SIZE_Y", "Pixel size Y", "%.2f", 1, 40, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP[CCDChip::CCD_BITSPERPIXEL].fill("CCD_BITSPERPIXEL", "Bits per pixel", "%.f", 8, 64, 0, 0);
+    m_PrimarySensor.ImagePixelSizeNP.fill(getDeviceName(), "CCD_INFO", "CCD Information", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
 
     // Primary CCD Compression Options
-    IUFillSwitch(&m_PrimarySensor.CompressS[INDI_ENABLED], "INDI_ENABLED", "Enabled", ISS_OFF);
-    IUFillSwitch(&m_PrimarySensor.CompressS[INDI_DISABLED], "INDI_DISABLED", "Disabled", ISS_ON);
-    IUFillSwitchVector(&m_PrimarySensor.CompressSP, m_PrimarySensor.CompressS, 2, getDeviceName(), "CCD_COMPRESSION", "Compression",
-                       IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    m_PrimarySensor.CompressSP[INDI_ENABLED].fill("INDI_ENABLED", "Enabled", ISS_OFF);
+    m_PrimarySensor.CompressSP[INDI_DISABLED].fill("INDI_DISABLED", "Disabled", ISS_ON);
+    m_PrimarySensor.CompressSP.fill(getDeviceName(), "CCD_COMPRESSION", "Compression", IMAGE_SETTINGS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
     m_PrimarySensor.SendCompressed = false;
 
     // Primary CCD Chip Data Blob
-    IUFillBLOB(&m_PrimarySensor.FitsB, "CCD1", "Image", "");
-    IUFillBLOBVector(&m_PrimarySensor.FitsBP, &m_PrimarySensor.FitsB, 1, getDeviceName(), "CCD1", "Image Data", IMAGE_INFO_TAB,
-                     IP_RO, 60, IPS_IDLE);
+    m_PrimarySensor.FitsBP[0].fill("CCD1", "Image", "");
+    m_PrimarySensor.FitsBP.fill(getDeviceName(), "CCD1", "Image Data", IMAGE_INFO_TAB, IP_RO, 60, IPS_IDLE);
 
     // Bayer
-    IUFillText(&BayerT[0], "CFA_OFFSET_X", "X Offset", "0");
-    IUFillText(&BayerT[1], "CFA_OFFSET_Y", "Y Offset", "0");
-    IUFillText(&BayerT[2], "CFA_TYPE", "Filter", nullptr);
-    IUFillTextVector(&BayerTP, BayerT, 3, getDeviceName(), "CCD_CFA", "Bayer Info", IMAGE_INFO_TAB, IP_RW, 60,
-                     IPS_IDLE);
+    BayerTP[0].fill("CFA_OFFSET_X", "X Offset", "0");
+    BayerTP[1].fill("CFA_OFFSET_Y", "Y Offset", "0");
+    BayerTP[2].fill("CFA_TYPE", "Filter", nullptr);
+    BayerTP.fill(getDeviceName(), "CCD_CFA", "Bayer Info", IMAGE_INFO_TAB, IP_RW, 60, IPS_IDLE);
 
     // Reset Frame Settings
-    IUFillSwitch(&m_PrimarySensor.ResetS[0], "RESET", "Reset", ISS_OFF);
-    IUFillSwitchVector(&m_PrimarySensor.ResetSP, m_PrimarySensor.ResetS, 1, getDeviceName(), "CCD_FRAME_RESET", "Frame Values",
-                       IMAGE_SETTINGS_TAB, IP_WO, ISR_1OFMANY, 0, IPS_IDLE);
+    m_PrimarySensor.ResetSP[0].fill("RESET", "Reset", ISS_OFF);
+    m_PrimarySensor.ResetSP.fill(getDeviceName(), "CCD_FRAME_RESET", "Frame Values", IMAGE_SETTINGS_TAB, IP_WO, ISR_1OFMANY, 0, IPS_IDLE);
 
     /**********************************************/
     /******************** WCS *********************/
     /**********************************************/
 
-    IUFillNumber(&CCDRotationN[0], "CCD_ROTATION_VALUE", "Rotation", "%g", -360, 360, 1, 0);
-    IUFillNumberVector(&CCDRotationNP, CCDRotationN, 1, getDeviceName(), "CCD_ROTATION", "CCD FOV", WCS_TAB, IP_RW, 60,
-                       IPS_IDLE);
+    // WCS Metadata
+    WCSMetadataNP[WCS_ROTATION].fill("CCD_ROTATION_VALUE", "Rotation", "%.2f", -360, 360, 1, 0);
+    WCSMetadataNP[WCS_PARITY].fill("CCD_PARITY", "Parity", "%.f", -1, 1, 1, 0);
+    WCSMetadataNP.fill(getDeviceName(), "CCD_ROTATION", "CCD FOV", WCS_TAB, IP_RW, 60, IPS_IDLE);
 
+    // OTA Information
     ScopeInfoNP[FocalLength].fill("FOCAL_LENGTH", "Focal Length (mm)", "%.2f", 10, 10000, 100, 0);
     ScopeInfoNP[Aperture].fill("APERTURE", "Aperture (mm)", "%.2f", 10, 3000, 100, 0);
     ScopeInfoNP.fill(getDeviceName(), "SCOPE_INFO", "Scope", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
@@ -314,16 +302,16 @@ bool CCD::initProperties()
     ActiveDeviceTP.fill(getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
     ActiveDeviceTP.load();
 
-    auto mount = ActiveDeviceTP[ACTIVE_TELESCOPE].getText();
+    auto mount = ActiveDeviceTP[ACTIVE_TELESCOPE].getText() ? ActiveDeviceTP[ACTIVE_TELESCOPE].getText() : "";
     // Snooped RA/DEC Property
-    IUFillNumber(&EqN[0], "RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
-    IUFillNumber(&EqN[1], "DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
-    IUFillNumberVector(&EqNP, EqN, 2, mount, "EQUATORIAL_EOD_COORD", "EQ Coord", "Main Control", IP_RW, 60, IPS_IDLE);
+    SnoopedEqNP[AXIS_RA].fill("RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
+    SnoopedEqNP[AXIS_DE].fill("DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
+    SnoopedEqNP.fill(mount, "EQUATORIAL_EOD_COORD", "EQ Coord", "Main Control", IP_RW, 60, IPS_IDLE);
 
     // Snooped J2000 RA/DEC Property
-    IUFillNumber(&J2000EqN[0], "RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
-    IUFillNumber(&J2000EqN[1], "DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
-    IUFillNumberVector(&J2000EqNP, J2000EqN, 2, mount, "EQUATORIAL_COORD", "J2000 EQ Coord", "Main Control", IP_RW, 60, IPS_IDLE);
+    SnoopedJ2000EqNP[AXIS_RA].fill("RA", "Ra (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
+    SnoopedJ2000EqNP[AXIS_DE].fill("DEC", "Dec (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
+    SnoopedJ2000EqNP.fill(mount, "EQUATORIAL_COORD", "J2000 EQ Coord", "Main Control", IP_RW, 60, IPS_IDLE);
 
     // Snoop properties of interest
 
@@ -374,66 +362,56 @@ void CCD::ISGetProperties(const char * dev)
 
 bool CCD::updateProperties()
 {
-    //IDLog("CCD UpdateProperties isConnected returns %d %d\n",isConnected(),Connected);
     if (isConnected())
     {
-        defineProperty(&m_PrimarySensor.ImageExposureNP);
+        defineProperty(m_PrimarySensor.ImageExposureNP);
 
         if (CanAbort())
-            defineProperty(&m_PrimarySensor.AbortExposureSP);
+            defineProperty(m_PrimarySensor.AbortExposureSP);
         if (CanSubFrame() == false)
-            m_PrimarySensor.ImageFrameNP.p = IP_RO;
+            m_PrimarySensor.ImageFrameNP.setPermission(IP_RO);
 
-        defineProperty(&m_PrimarySensor.ImageFrameNP);
+        defineProperty(m_PrimarySensor.ImageFrameNP);
         if (CanBin() || CanSubFrame())
-            defineProperty(&m_PrimarySensor.ResetSP);
+            defineProperty(m_PrimarySensor.ResetSP);
 
         if (CanBin())
-            defineProperty(&m_PrimarySensor.ImageBinNP);
+            defineProperty(m_PrimarySensor.ImageBinNP);
 
         defineProperty(FITSHeaderTP);
 
-        if (HasGuideHead())
-        {
-            defineProperty(&GuideCCD.ImageExposureNP);
-            if (CanAbort())
-                defineProperty(&GuideCCD.AbortExposureSP);
-            if (CanSubFrame() == false)
-                GuideCCD.ImageFrameNP.p = IP_RO;
-            defineProperty(&GuideCCD.ImageFrameNP);
-        }
-
         if (HasCooler())
         {
-            defineProperty(&TemperatureNP);
+            defineProperty(TemperatureNP);
             defineProperty(TemperatureRampNP);
         }
 
         defineProperty(CaptureFormatSP);
         defineProperty(EncodeFormatSP);
 
-        defineProperty(&m_PrimarySensor.ImagePixelSizeNP);
-        defineProperty(&m_PrimarySensor.CompressSP);
-        defineProperty(&m_PrimarySensor.FitsBP);
+        defineProperty(m_PrimarySensor.ImagePixelSizeNP);
+        defineProperty(m_PrimarySensor.CompressSP);
+        defineProperty(m_PrimarySensor.FitsBP);
         if (HasST4Port())
         {
             defineProperty(&GuideNSNP);
             defineProperty(&GuideWENP);
         }
-        defineProperty(&m_PrimarySensor.FrameTypeSP);
+        defineProperty(m_PrimarySensor.FrameTypeSP);
 
 
         if (HasBayer())
             defineProperty(BayerTP);
 
 
+        defineProperty(WCSMetadataNP);
         defineProperty(ScopeInfoNP);
 
-        defineProperty(&UploadSP);
+        defineProperty(UploadSP);
 
         if (UploadSettingsTP[UPLOAD_DIR].getText() == nullptr)
             UploadSettingsTP[UPLOAD_DIR].setText(getenv("HOME"));
-        defineProperty(&UploadSettingsTP);
+        defineProperty(UploadSettingsTP);
 
 #ifdef HAVE_WEBSOCKET
         if (HasWebSocket())
@@ -445,80 +423,46 @@ bool CCD::updateProperties()
     }
     else
     {
-        deleteProperty(m_PrimarySensor.ImageFrameNP.name);
+        deleteProperty(m_PrimarySensor.ImageFrameNP);
         if (CanBin() || CanSubFrame())
-            deleteProperty(m_PrimarySensor.ResetSP.name);
+            deleteProperty(m_PrimarySensor.ResetSP);
 
-        deleteProperty(m_PrimarySensor.ImagePixelSizeNP.name);
+        deleteProperty(m_PrimarySensor.ImagePixelSizeNP);
 
-        deleteProperty(CaptureFormatSP.getName());
-        deleteProperty(EncodeFormatSP.getName());
+        deleteProperty(CaptureFormatSP);
+        deleteProperty(EncodeFormatSP);
 
         if (CanBin())
-            deleteProperty(m_PrimarySensor.ImageBinNP.name);
+            deleteProperty(m_PrimarySensor.ImageBinNP);
 
-        deleteProperty(m_PrimarySensor.ImageExposureNP.name);
+        deleteProperty(m_PrimarySensor.ImageExposureNP);
         if (CanAbort())
-            deleteProperty(m_PrimarySensor.AbortExposureSP.name);
-        deleteProperty(m_PrimarySensor.FitsBP.name);
-        deleteProperty(m_PrimarySensor.CompressSP.name);
-
-#if 0
-        deleteProperty(PrimaryCCD.RapidGuideSP.name);
-        if (RapidGuideEnabled)
-        {
-            deleteProperty(PrimaryCCD.RapidGuideSetupSP.name);
-            deleteProperty(PrimaryCCD.RapidGuideDataNP.name);
-        }
-#endif
+            deleteProperty(m_PrimarySensor.AbortExposureSP);
+        deleteProperty(m_PrimarySensor.FitsBP);
+        deleteProperty(m_PrimarySensor.CompressSP);
 
         deleteProperty(FITSHeaderTP);
 
-        if (HasGuideHead())
-        {
-            deleteProperty(GuideCCD.ImageExposureNP.name);
-            if (CanAbort())
-                deleteProperty(GuideCCD.AbortExposureSP.name);
-            deleteProperty(GuideCCD.ImageFrameNP.name);
-            deleteProperty(GuideCCD.ImagePixelSizeNP.name);
-
-            deleteProperty(GuideCCD.FitsBP.name);
-            if (CanBin())
-                deleteProperty(GuideCCD.ImageBinNP.name);
-            deleteProperty(GuideCCD.CompressSP.name);
-            deleteProperty(GuideCCD.FrameTypeSP.name);
-
-#if 0
-            deleteProperty(GuideCCD.RapidGuideSP.name);
-            if (GuiderRapidGuideEnabled)
-            {
-                deleteProperty(GuideCCD.RapidGuideSetupSP.name);
-                deleteProperty(GuideCCD.RapidGuideDataNP.name);
-            }
-#endif
-        }
         if (HasCooler())
         {
-            deleteProperty(TemperatureNP.name);
-            deleteProperty(TemperatureRampNP.getName());
+            deleteProperty(TemperatureNP);
+            deleteProperty(TemperatureRampNP);
         }
+
         if (HasST4Port())
         {
             deleteProperty(GuideNSNP.name);
             deleteProperty(GuideWENP.name);
         }
-        deleteProperty(m_PrimarySensor.FrameTypeSP.name);
+        deleteProperty(m_PrimarySensor.FrameTypeSP);
         if (HasBayer())
-            deleteProperty(BayerTP.name);
+            deleteProperty(BayerTP);
+
+        deleteProperty(WCSMetadataNP);
         deleteProperty(ScopeInfoNP);
 
-        if (WorldCoordS[0].s == ISS_ON)
-        {
-            deleteProperty(CCDRotationNP.name);
-        }
-        deleteProperty(WorldCoordSP.name);
-        deleteProperty(UploadSP.name);
-        deleteProperty(UploadSettingsTP.name);
+        deleteProperty(UploadSP);
+        deleteProperty(UploadSettingsTP);
 
 #ifdef HAVE_WEBSOCKET
         if (HasWebSocket())
@@ -527,8 +471,8 @@ bool CCD::updateProperties()
             deleteProperty(WebSocketSettingsNP.name);
         }
 #endif
-        deleteProperty(FastExposureToggleSP.name);
-        deleteProperty(FastExposureCountNP.name);
+        deleteProperty(FastExposureToggleSP);
+        deleteProperty(FastExposureCountNP);
     }
 
     // Streamer
@@ -547,29 +491,15 @@ bool CCD::ISSnoopDevice(XMLEle * root)
     XMLEle * ep = nullptr;
     const char * propName = findXMLAttValu(root, "name");
 
-    if (IUSnoopNumber(root, &EqNP) == 0)
+    if (SnoopedEqNP.snoop(root))
     {
-        double newra, newdec;
-        newra  = EqN[0].value;
-        newdec = EqN[1].value;
-        if ((newra != m_MountJNowRA) || (newdec != m_MountJNowDE))
-        {
-            //IDLog("RA %4.2f  Dec %4.2f Snooped RA %4.2f  Dec %4.2f\n",RA,Dec,newra,newdec);
-            m_MountJNowRA  = newra;
-            m_MountJNowDE = newdec;
-        }
+        m_MountJNowRA = SnoopedEqNP[AXIS_RA].getValue();
+        m_MountJNowDE = SnoopedEqNP[AXIS_DE].getValue();
     }
-    else if (IUSnoopNumber(root, &J2000EqNP) == 0)
+    else if (SnoopedJ2000EqNP.snoop(root))
     {
-        float newra, newdec;
-        newra  = J2000EqN[0].value;
-        newdec = J2000EqN[1].value;
-        if ((newra != m_MountJ2000RA) || (newdec != m_MountJ2000DE))
-        {
-            //    	    IDLog("J2000 RA %4.2f  Dec %4.2f Snooped RA %4.2f  Dec %4.2f\n",J2000RA,J2000DE,newra,newdec);
-            m_MountJ2000RA = newra;
-            m_MountJ2000DE = newdec;
-        }
+        m_MountJ2000RA = SnoopedJ2000EqNP[AXIS_RA].getValue();
+        m_MountJ2000DE = SnoopedJ2000EqNP[AXIS_DE].getValue();
         m_MountJ2000Valid = true;
     }
     else if (!strcmp("TELESCOPE_PIER_SIDE", propName))
@@ -589,7 +519,6 @@ bool CCD::ISSnoopDevice(XMLEle * root)
     }
     else if (!strcmp(propName, "FILTER_NAME"))
     {
-        LOG_DEBUG("SNOOP: FILTER_NAME update...");
         m_FilterNames.clear();
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
             m_FilterNames.push_back(pcdataXMLEle(ep));
@@ -598,7 +527,6 @@ bool CCD::ISSnoopDevice(XMLEle * root)
     }
     else if (!strcmp(propName, "FILTER_SLOT"))
     {
-        LOG_DEBUG("SNOOP: FILTER_SLOT update...");
         m_FilterSlot = -1;
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
             m_FilterSlot = atoi(pcdataXMLEle(ep));
@@ -630,8 +558,6 @@ bool CCD::ISSnoopDevice(XMLEle * root)
             }
         }
     }
-
-    // JJ ed 2019-12-10
     else if (!strcmp(propName, "ABS_FOCUS_POSITION"))
     {
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
@@ -658,8 +584,6 @@ bool CCD::ISSnoopDevice(XMLEle * root)
             }
         }
     }
-    //
-
     else if (!strcmp(propName, "GEOGRAPHIC_COORD"))
     {
         for (ep = nextXMLEle(root, 1); ep != nullptr; ep = nextXMLEle(root, 0))
@@ -689,22 +613,25 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
     {
         //  This is for our device
         //  Now lets see if it's something we process here
-        if (!strcmp(name, ActiveDeviceTP.name))
+        if (ActiveDeviceTP.isNameMatch(name))
         {
-            ActiveDeviceTP.s = IPS_OK;
-            IUUpdateText(&ActiveDeviceTP, texts, names, n);
-            IDSetText(&ActiveDeviceTP, nullptr);
+            ActiveDeviceTP.setState(IPS_OK);
+            ActiveDeviceTP.update(texts, names, n);
+            ActiveDeviceTP.apply();
 
-            // Update the property name!
-            strncpy(EqNP.device, ActiveDeviceT[ACTIVE_TELESCOPE].text, MAXINDIDEVICE);
-            strncpy(J2000EqNP.device, ActiveDeviceT[ACTIVE_TELESCOPE].text, MAXINDIDEVICE);
-            if (strlen(ActiveDeviceT[ACTIVE_TELESCOPE].text) > 0)
+            auto mount = ActiveDeviceTP[ACTIVE_TELESCOPE].getText();
+
+            if (mount)
             {
-                LOGF_DEBUG("Snopping on Mount %s", ActiveDeviceT[ACTIVE_TELESCOPE].text);
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "EQUATORIAL_EOD_COORD");
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "EQUATORIAL_COORD");
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "TELESCOPE_INFO");
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "GEOGRAPHIC_COORD");
+                LOGF_DEBUG("Snopping on Mount %s", mount);
+
+                // Update the property name!
+                SnoopedEqNP.setDeviceName(mount);
+                SnoopedJ2000EqNP.setDeviceName(mount);
+                IDSnoopDevice(mount, "EQUATORIAL_EOD_COORD");
+                IDSnoopDevice(mount, "EQUATORIAL_COORD");
+                IDSnoopDevice(mount, "TELESCOPE_INFO");
+                IDSnoopDevice(mount, "GEOGRAPHIC_COORD");
             }
             else
             {
@@ -720,10 +647,11 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
                 m_Altitude = std::numeric_limits<double>::quiet_NaN();
             }
 
-            if (strlen(ActiveDeviceT[ACTIVE_ROTATOR].text) > 0)
+            auto rotator = ActiveDeviceTP[ACTIVE_ROTATOR].getText();
+            if (rotator)
             {
-                LOGF_DEBUG("Snopping on Rotator %s", ActiveDeviceT[ACTIVE_ROTATOR].text);
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_ROTATOR].text, "ABS_ROTATOR_ANGLE");
+                LOGF_DEBUG("Snopping on Rotator %s", rotator);
+                IDSnoopDevice(rotator, "ABS_ROTATOR_ANGLE");
             }
             else
             {
@@ -731,12 +659,12 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
                 m_MPSAS = std::numeric_limits<double>::quiet_NaN();
             }
 
-            // JJ ed 2019-12-10
-            if (strlen(ActiveDeviceT[ACTIVE_FOCUSER].text) > 0)
+            auto focuser = ActiveDeviceTP[ACTIVE_FOCUSER].getText();
+            if (focuser)
             {
-                LOGF_DEBUG("Snopping on Focuser %s", ActiveDeviceT[ACTIVE_FOCUSER].text);
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "ABS_FOCUS_POSITION");
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "FOCUS_TEMPERATURE");
+                LOGF_DEBUG("Snopping on Focuser %s", focuser);
+                IDSnoopDevice(focuser, "ABS_FOCUS_POSITION");
+                IDSnoopDevice(focuser, "FOCUS_TEMPERATURE");
             }
             else
             {
@@ -745,12 +673,12 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
                 m_FocuserTemperature = std::numeric_limits<double>::quiet_NaN();
             }
 
-
-            if (strlen(ActiveDeviceT[ACTIVE_FILTER].text) > 0)
+            auto filterwheel = ActiveDeviceTP[ACTIVE_FILTER].getText();
+            if (filterwheel)
             {
-                LOGF_DEBUG("Snopping on Filter Wheel %s", ActiveDeviceT[ACTIVE_FILTER].text);
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_FILTER].text, "FILTER_SLOT");
-                IDSnoopDevice(ActiveDeviceT[ACTIVE_FILTER].text, "FILTER_NAME");
+                LOGF_DEBUG("Snopping on Filter Wheel %s", filterwheel);
+                IDSnoopDevice(filterwheel, "FILTER_SLOT");
+                IDSnoopDevice(filterwheel, "FILTER_NAME");
             }
             else
             {
@@ -758,7 +686,7 @@ bool CCD::ISNewText(const char * dev, const char * name, char * texts[], char * 
                 m_FilterSlot = -1;
             }
 
-            IDSnoopDevice(ActiveDeviceT[ACTIVE_SKYQUALITY].text, "SKY_QUALITY");
+            IDSnoopDevice(ActiveDeviceTP[ACTIVE_SKYQUALITY].getText(), "SKY_QUALITY");
 
             // Tell children active devices was updated.
             activeDevicesUpdated();
