@@ -1855,7 +1855,7 @@ void Telescope::generateCoordSet()
     }
 }
 
-void Telescope::SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount)
+void Telescope::SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount, int defaultSlewRate, const std::vector<std::string> &labels)
 {
     capability = cap;
     nSlewRate  = slewRateCount;
@@ -1866,32 +1866,32 @@ void Telescope::SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount)
     {
         SlewRateSP.resize(0);
         INDI::WidgetSwitch node;
-        //int step  = nSlewRate / 4;
         for (int i = 0; i < nSlewRate; i++)
         {
-            // char name[4];
             auto name = std::to_string(i + 1) + "x";
-            // snprintf(name, 4, "%dx", i + 1);
-            // IUFillSwitch(SlewRateS + i, name, name, ISS_OFF);
-            node.fill(name, name, ISS_OFF);
+
+            // Check if we have labels first
+            try
+            {
+                auto label = labels.at(i);
+                node.fill(name, name, ISS_OFF);
+            }
+            // Otherwise label = name
+            catch (const std::out_of_range &)
+            {
+                node.fill(name, name, ISS_OFF);
+            }
+
             SlewRateSP.push(std::move(node));
         }
 
-        // If number of slew rate is EXACTLY 4, then let's use common labels
-        if (nSlewRate == 4)
-        {
-            // strncpy((SlewRateS + (0))->label, "Guide", MAXINDILABEL);
-            SlewRateSP[0].setLabel("Guide");
-            SlewRateSP[1].setLabel("Centering");
-            SlewRateSP[2].setLabel("Find");
-            SlewRateSP[3].setLabel("Max");
-        }
-
         // By Default we set current Slew Rate to 0.5 of max
-        SlewRateSP[nSlewRate / 2].setState(ISS_ON);
+        if (defaultSlewRate != -1 && defaultSlewRate < static_cast<int>(SlewRateSP.count()))
+            SlewRateSP[defaultSlewRate].setState(ISS_ON);
+        else
+            SlewRateSP[nSlewRate / 2].setState(ISS_ON);
 
-        SlewRateSP.fill(getDeviceName(), "TELESCOPE_SLEW_RATE", "Slew Rate",
-                        MOTION_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
+        SlewRateSP.fill(getDeviceName(), "TELESCOPE_SLEW_RATE", "Slew Rate", MOTION_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
     }
 
     if (CanHomeFind() || CanHomeSet() || CanHomeGo())

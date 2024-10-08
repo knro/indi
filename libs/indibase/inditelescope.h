@@ -216,7 +216,7 @@ class Telescope : public DefaultDevice
          * slew rate property TELESCOPE_SLEW_RATE with SLEW_GUIDE, SLEW_CENTERING, SLEW_FIND, and SLEW_MAX
          * members where SLEW_GUIDE is the at the lowest setting and SLEW_MAX is at the highest.
          */
-        void SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount);
+        void SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount, int defaultSlewRate = -1, const std::vector<std::string> &labels = std::vector<std::string>());
 
         /**
          * @return True if telescope support goto operations
