@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 #include "indibase.h"
+#include "indipropertynumber.h"
+#include "indipropertytext.h"
 
 /**
  * \class FilterInterface
@@ -117,17 +119,15 @@ class FilterInterface
          */
         bool saveConfigItems(FILE *fp);
 
-        //  A number vector for filter slot
-        INumberVectorProperty FilterSlotNP;
-        INumber FilterSlotN[1];
+        //  A number property for filter slot
+        INDI::PropertyNumber FilterSlotNP {1};
 
-        //  A text vector that stores out physical port name
-        ITextVectorProperty *FilterNameTP { nullptr };
-        IText *FilterNameT;
+        //  A text property that stores filter names
+        INDI::PropertyText FilterNameTP {0};
 
-        int CurrentFilter = 1;
-        int TargetFilter = 1;
-        bool loadingFromConfig = false;
+        int CurrentFilter { 1 };
+        int TargetFilter { 1 };
+        bool loadingFromConfig { false };
 
         DefaultDevice *m_defaultDevice { nullptr };
 

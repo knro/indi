@@ -116,14 +116,8 @@ bool FilterWheel::ISNewNumber(const char *dev, const char *name, double values[]
 
 bool FilterWheel::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
 {
-    if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
-    {
-        if (strcmp(name, FilterNameTP->name) == 0)
-        {
-            FilterInterface::processText(dev, name, texts, names, n);
-            return true;
-        }
-    }
+    if (FilterInterface::processText(dev, name, texts, names, n))
+        return true;
 
     controller->ISNewText(dev, name, texts, names, n);
     return DefaultDevice::ISNewText(dev, name, texts, names, n);
@@ -178,10 +172,10 @@ void FilterWheel::processJoystick(const char *joystick_n, double mag, double ang
             if (angle > 0 && angle < 180)
             {
                 // Previous switch
-                if (FilterSlotN[0].value == FilterSlotN[0].min)
-                    TargetFilter = FilterSlotN[0].max;
+                if (FilterSlotNP[0].getValue() == FilterSlotNP[0].getMin())
+                    TargetFilter = FilterSlotNP[0].getMax();
                 else
-                    TargetFilter = FilterSlotN[0].value - 1;
+                    TargetFilter = FilterSlotNP[0].getValue() - 1;
 
                 SelectFilter(TargetFilter);
             }
@@ -189,10 +183,10 @@ void FilterWheel::processJoystick(const char *joystick_n, double mag, double ang
             if (angle > 180 && angle < 360)
             {
                 // Next Switch
-                if (FilterSlotN[0].value == FilterSlotN[0].max)
-                    TargetFilter = FilterSlotN[0].min;
+                if (FilterSlotNP[0].getValue() == FilterSlotNP[0].getMax())
+                    TargetFilter = FilterSlotNP[0].getMin();
                 else
-                    TargetFilter = FilterSlotN[0].value + 1;
+                    TargetFilter = FilterSlotNP[0].getValue() + 1;
 
                 SelectFilter(TargetFilter);
             }
@@ -209,7 +203,7 @@ void FilterWheel::processButton(const char *button_n, ISState state)
     // Reset
     if (!strcmp(button_n, "Reset"))
     {
-        TargetFilter = FilterSlotN[0].min;
+        TargetFilter = FilterSlotNP[0].getMin();
         SelectFilter(TargetFilter);
     }
 }
