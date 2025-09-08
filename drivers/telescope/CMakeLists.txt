@@ -144,7 +144,7 @@ install(TARGETS indi_crux_mount RUNTIME DESTINATION bin)
 add_executable(indi_temma_telescope
     temmadriver.cpp)
 
-target_link_libraries(indi_temma_telescope indidriver AlignmentDriver)
+target_link_libraries(indi_temma_telescope indidriver)
 
 install(TARGETS indi_temma_telescope RUNTIME DESTINATION bin)
 
@@ -160,7 +160,7 @@ install(TARGETS indi_paramount_telescope RUNTIME DESTINATION bin)
 add_executable(indi_astrotrac_telescope
     astrotrac.cpp)
 
-target_link_libraries(indi_astrotrac_telescope AlignmentDriver indidriver)
+target_link_libraries(indi_astrotrac_telescope indidriver)
 
 install(TARGETS indi_astrotrac_telescope RUNTIME DESTINATION bin)
 
@@ -169,7 +169,7 @@ add_executable(indi_synscan_telescope
     synscandriver.cpp
     synscanmount.cpp)
 
-target_link_libraries(indi_synscan_telescope indidriver AlignmentDriver)
+target_link_libraries(indi_synscan_telescope indidriver)
 
 install(TARGETS indi_synscan_telescope RUNTIME DESTINATION bin)
 
@@ -178,7 +178,7 @@ add_executable(indi_synscanlegacy_telescope
     synscandriverlegacy.cpp
     synscanmountlegacy.cpp)
 
-target_link_libraries(indi_synscanlegacy_telescope indidriver AlignmentDriver)
+target_link_libraries(indi_synscanlegacy_telescope indidriver)
 
 install(TARGETS indi_synscanlegacy_telescope RUNTIME DESTINATION bin)
 
@@ -194,7 +194,7 @@ install(TARGETS indi_skycommander_telescope RUNTIME DESTINATION bin)
 add_executable(indi_dsc_telescope
     dsc.cpp)
 
-target_link_libraries(indi_dsc_telescope AlignmentDriver indidriver)
+target_link_libraries(indi_dsc_telescope indidriver)
 
 install(TARGETS indi_dsc_telescope RUNTIME DESTINATION bin)
 
@@ -256,7 +256,7 @@ add_executable(indi_skywatcherAltAzMount
     skywatcherAPIMount.cpp
     skywatcherAPI.cpp)
 
-target_link_libraries(indi_skywatcherAltAzMount AlignmentDriver indidriver)
+target_link_libraries(indi_skywatcherAltAzMount indidriver)
 
 install(TARGETS indi_skywatcherAltAzMount RUNTIME DESTINATION bin)
 

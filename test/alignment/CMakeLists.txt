@@ -4,8 +4,7 @@ ADD_EXECUTABLE(test_alignment
     test_alignment.cpp
 )
 
-TARGET_LINK_LIBRARIES(test_alignment
-    AlignmentDriver
+TARGET_LINK_LIBRARIES(test_alignment    
     indidriver
     ${GTEST_BOTH_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
