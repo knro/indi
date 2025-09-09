@@ -222,54 +222,186 @@ bool IMU::ISNewNumber(const char *dev, const char *name, double values[], char *
         {
             INDI::AlignmentSubsystem::TelescopeDirectionVectorSupportFunctions tdvFunctions;
 
-            INDI::AlignmentSubsystem::TelescopeDirectionVector currentVector, syncVector;
-
+            // Step 1: Convert sync coordinates to a TelescopeDirectionVector in the appropriate sky frame.
+            INDI::AlignmentSubsystem::TelescopeDirectionVector skyVector;
             if (AstroCoordsTypeSP[COORD_EQUATORIAL].s == ISS_ON)
             {
-                INDI::IEquatorialCoordinates currentEq, syncEq;
-                currentEq.rightascension = AstroCoordinatesNP[AXIS1].getValue() / 15.0; // Convert degrees to hours
-                currentEq.declination    = AstroCoordinatesNP[AXIS2].getValue();
-                currentVector            = tdvFunctions.TelescopeDirectionVectorFromLocalHourAngleDeclination(currentEq);
-
+                INDI::IEquatorialCoordinates syncEq;
                 syncEq.rightascension = values[AXIS1] / 15.0; // Convert degrees to hours
                 syncEq.declination    = values[AXIS2];
-                syncVector            = tdvFunctions.TelescopeDirectionVectorFromLocalHourAngleDeclination(syncEq);
+                skyVector = tdvFunctions.TelescopeDirectionVectorFromLocalHourAngleDeclination(syncEq);
             }
             else
             {
-                INDI::IHorizontalCoordinates currentHor, syncHor;
-                currentHor.azimuth  = AstroCoordinatesNP[AXIS1].getValue();
-                currentHor.altitude = AstroCoordinatesNP[AXIS2].getValue();
-                currentVector       = tdvFunctions.TelescopeDirectionVectorFromAltitudeAzimuth(currentHor);
-
+                INDI::IHorizontalCoordinates syncHor;
                 syncHor.azimuth  = values[AXIS1];
                 syncHor.altitude = values[AXIS2];
-                syncVector       = tdvFunctions.TelescopeDirectionVectorFromAltitudeAzimuth(syncHor);
+                // This function returns a vector in the NWU frame
+                skyVector = tdvFunctions.TelescopeDirectionVectorFromAltitudeAzimuth(syncHor);
             }
 
-            // Calculate the rotation axis and angle
-            INDI::AlignmentSubsystem::TelescopeDirectionVector rotationAxis = currentVector * syncVector;
+            // Step 2: Inverse transform the sky vector back to the local horizon (ENU) frame.
+            INDI::AlignmentSubsystem::TelescopeDirectionVector enuVector;
+            if (AstroCoordsTypeSP[COORD_EQUATORIAL].s == ISS_ON)
+            {
+                // Inverse of the transformation from ENU to Equatorial
+                double latitude = GeographicCoordNP[LOCATION_LATITUDE].getValue();
+                double lat_rad = DEG_TO_RAD(latitude);
+                double sin_lat = sin(lat_rad);
+                double cos_lat = cos(lat_rad);
+
+                // Original transform: x_eq = z_enu*cos-y_enu*sin, y_eq = -x_enu, z_eq = z_enu*sin+y_enu*cos
+                // Inverse transform:
+                enuVector.x = -skyVector.y; // East
+                enuVector.y = (skyVector.z - (skyVector.x * sin_lat / cos_lat)) / (cos_lat + (sin_lat * sin_lat / cos_lat)); // North
+                enuVector.z = (skyVector.x + enuVector.y * sin_lat) / cos_lat; // Up
+            }
+            else
+            {
+                // The skyVector is in the NWU frame, convert it to ENU
+                // NWU to ENU: X_enu = -Y_nwu, Y_enu = X_nwu, Z_enu = Z_nwu
+                enuVector.x = -skyVector.y;
+                enuVector.y = skyVector.x;
+                enuVector.z = skyVector.z;
+            }
+
+            // Step 3: Inverse transform from the local horizon (ENU) frame to the IMU's sensor frame.
+            // This gives us the "target" vector - what the telescope vector *should* be in the sensor's frame.
+            INDI::AlignmentSubsystem::TelescopeDirectionVector targetIMUVector;
+            IMUFrame frame = (IMUFrame)IMUFrameSP.findOnSwitchIndex();
+            switch (frame)
+            {
+                case ENU:
+                    // No conversion needed
+                    targetIMUVector = enuVector;
+                    break;
+                case NWU:
+                    // ENU to NWU: X_nwu = Y_enu, Y_nwu = -X_enu, Z_nwu = Z_enu
+                    targetIMUVector.x = enuVector.y;
+                    targetIMUVector.y = -enuVector.x;
+                    targetIMUVector.z = enuVector.z;
+                    break;
+                case SWU:
+                    // ENU to SWU: X_swu = -Y_enu, Y_swu = -X_enu, Z_swu = Z_enu
+                    targetIMUVector.x = -enuVector.y;
+                    targetIMUVector.y = -enuVector.x;
+                    targetIMUVector.z = enuVector.z;
+                    break;
+            }
+
+            // Step 4: Calculate the telescope's *current* pointing vector in the sensor frame.
+            // This is done by rotating the configured TelescopeVector by the raw sensor quaternion.
+            double vx = TelescopeVectorNP[TELESCOPE_VECTOR_X].getValue();
+            double vy = TelescopeVectorNP[TELESCOPE_VECTOR_Y].getValue();
+            double vz = TelescopeVectorNP[TELESCOPE_VECTOR_Z].getValue();
+            double qw = last_raw_q_w, qx = last_raw_q_i, qy = last_raw_q_j, qz = last_raw_q_k;
+
+            double current_x = vx * (1 - 2 * qy * qy - 2 * qz * qz) + vy * (2 * qx * qy - 2 * qz * qw) + vz *
+                               (2 * qx * qz + 2 * qy * qw);
+            double current_y = vx * (2 * qx * qy + 2 * qz * qw) + vy * (1 - 2 * qx * qx - 2 * qz * qz) + vz *
+                               (2 * qy * qz - 2 * qx * qw);
+            double current_z = vx * (2 * qx * qz - 2 * qy * qw) + vy * (2 * qy * qz + 2 * qx * qw) + vz *
+                               (1 - 2 * qx * qx - 2 * qy * qy);
+            INDI::AlignmentSubsystem::TelescopeDirectionVector currentIMUVector(current_x, current_y, current_z);
+
+            // Step 5: Calculate the rotation required to get from the current sensor vector to the target sensor vector.
+            INDI::AlignmentSubsystem::TelescopeDirectionVector rotationAxis = currentIMUVector * targetIMUVector;
+            double dotProduct = std::max(-1.0, std::min(1.0, currentIMUVector ^ targetIMUVector));
+            double rotationAngle = acos(dotProduct);
+
+            if (rotationAngle < 1e-6) // Already aligned
+            {
+                DEBUG(Logger::DBG_DEBUG, "IMU Sync: Already aligned, no adjustment needed.");
+                return true;
+            }
             rotationAxis.Normalise();
-            double rotationAngle = acos(currentVector ^ syncVector);
 
-            // Convert axis-angle to quaternion
-            double s = sin(rotationAngle / 2.0);
-            double w = cos(rotationAngle / 2.0);
-            double i = rotationAxis.x * s;
-            double j = rotationAxis.y * s;
-            double k = rotationAxis.z * s;
+            // Step 5.1: Determine the full rotation that is currently being applied to the raw data
+            double rollMultiplier  = OrientationAdjustmentsNP[ROLL_MULTIPLIER].getValue();
+            double pitchMultiplier = OrientationAdjustmentsNP[PITCH_MULTIPLIER].getValue();
+            double yawMultiplier   = OrientationAdjustmentsNP[YAW_MULTIPLIER].getValue();
+            double magneticDeclinationRad = DEG_TO_RAD(MagneticDeclinationNP[0].getValue());
 
-            // Convert the rotation quaternion to Euler angles (roll, pitch, yaw)
+            double rawRollRad, rawPitchRad, rawYawRad;
+            QuaternionToEuler(qx, qy, qz, qw, rawRollRad, rawPitchRad, rawYawRad);
+
+            rawRollRad *= rollMultiplier;
+            rawPitchRad *= pitchMultiplier;
+            rawYawRad *= yawMultiplier;
+
+            double multiplied_i, multiplied_j, multiplied_k, multiplied_w;
+            EulerToQuaternion(rawRollRad, rawPitchRad, rawYawRad, multiplied_i, multiplied_j, multiplied_k, multiplied_w);
+
+            double mag_i, mag_j, mag_k, mag_w;
+            EulerToQuaternion(0, 0, magneticDeclinationRad, mag_i, mag_j, mag_k, mag_w);
+
+            // Step 5.2: The rotation from the telescope vector to the target IMU vector is the final, absolute orientation
+            // that the IMU should have. Let's call it target_orientation_q.
+            INDI::AlignmentSubsystem::TelescopeDirectionVector v(vx, vy, vz);
+            v.Normalise();
+            targetIMUVector.Normalise();
+            double dot = v ^ targetIMUVector;
+            INDI::AlignmentSubsystem::TelescopeDirectionVector axis = v * targetIMUVector;
+            axis.Normalise();
+            double angle = acos(dot);
+
+            double s = sin(angle / 2.0);
+            double target_orientation_w = cos(angle / 2.0);
+            double target_orientation_i = axis.x * s;
+            double target_orientation_j = axis.y * s;
+            double target_orientation_k = axis.z * s;
+
+            // Step 5.3: We have target_orientation_q = mag_q * offset_q * multiplied_q
+            // We need to solve for offset_q.
+            // offset_q = conjugate(mag_q) * target_orientation_q * conjugate(multiplied_q)
+
+            // conjugate(mag_q)
+            double conj_mag_i = -mag_i, conj_mag_j = -mag_j, conj_mag_k = -mag_k, conj_mag_w = mag_w;
+            // conjugate(multiplied_q)
+            double conj_mult_i = -multiplied_i, conj_mult_j = -multiplied_j, conj_mult_k = -multiplied_k, conj_mult_w = multiplied_w;
+
+            // temp_q = conjugate(mag_q) * target_orientation_q
+            double temp_w = conj_mag_w * target_orientation_w - conj_mag_i * target_orientation_i - conj_mag_j * target_orientation_j -
+                            conj_mag_k * target_orientation_k;
+            double temp_i = conj_mag_w * target_orientation_i + conj_mag_i * target_orientation_w + conj_mag_j * target_orientation_k -
+                            conj_mag_k * target_orientation_j;
+            double temp_j = conj_mag_w * target_orientation_j - conj_mag_i * target_orientation_k + conj_mag_j * target_orientation_w +
+                            conj_mag_k * target_orientation_i;
+            double temp_k = conj_mag_w * target_orientation_k + conj_mag_i * target_orientation_j - conj_mag_j * target_orientation_i +
+                            conj_mag_k * target_orientation_w;
+
+            // offset_q = temp_q * conjugate(multiplied_q)
+            double offset_w = temp_w * conj_mult_w - temp_i * conj_mult_i - temp_j * conj_mult_j - temp_k * conj_mult_k;
+            double offset_i = temp_w * conj_mult_i + temp_i * conj_mult_w + temp_j * conj_mult_k - temp_k * conj_mult_j;
+            double offset_j = temp_w * conj_mult_j - temp_i * conj_mult_k + temp_j * conj_mult_w + temp_k * conj_mult_i;
+            double offset_k = temp_w * conj_mult_k + temp_i * conj_mult_j - temp_j * conj_mult_i + temp_k * conj_mult_w;
+
+            // Step 6: Convert the new offset quaternion to Euler angles and set the properties.
             double roll, pitch, yaw;
-            QuaternionToEuler(i, j, k, w, roll, pitch, yaw);
+            QuaternionToEuler(offset_i, offset_j, offset_k, offset_w, roll, pitch, yaw);
 
-            // Apply the calculated offsets to the orientation adjustments
-            OrientationAdjustmentsNP[ROLL_OFFSET].setValue(OrientationAdjustmentsNP[ROLL_OFFSET].getValue() + RAD_TO_DEG(roll));
-            OrientationAdjustmentsNP[PITCH_OFFSET].setValue(OrientationAdjustmentsNP[PITCH_OFFSET].getValue() + RAD_TO_DEG(pitch));
-            OrientationAdjustmentsNP[YAW_OFFSET].setValue(OrientationAdjustmentsNP[YAW_OFFSET].getValue() + RAD_TO_DEG(yaw));
+            OrientationAdjustmentsNP[ROLL_OFFSET].setValue(RAD_TO_DEG(roll));
+            OrientationAdjustmentsNP[PITCH_OFFSET].setValue(RAD_TO_DEG(pitch));
+            OrientationAdjustmentsNP[YAW_OFFSET].setValue(RAD_TO_DEG(yaw));
+            OrientationAdjustmentsNP.apply();
 
-            // Recalculate the astro coordinates with the new adjustments
-            RecalculateAstroCoordinates();
+            // Step 7: Add extensive logging for debugging.
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Syncing to Axis1=%.2f, Axis2=%.2f", values[AXIS1], values[AXIS2]);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Selected IMU Frame: %s", IMUFrameSP.findOnSwitch()->getLabel());
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Telescope Vector: X=%.4f, Y=%.4f, Z=%.4f", vx, vy, vz);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Raw Quaternion: i=%.4f, j=%.4f, k=%.4f, w=%.4f", qx, qy, qz, qw);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Target IMU Vector: X=%.4f, Y=%.4f, Z=%.4f", targetIMUVector.x,
+                   targetIMUVector.y, targetIMUVector.z);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Current IMU Vector: X=%.4f, Y=%.4f, Z=%.4f", currentIMUVector.x,
+                   currentIMUVector.y, currentIMUVector.z);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: Rotation Angle: %.4f deg", RAD_TO_DEG(rotationAngle));
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: New Offset Quaternion: i=%.4f, j=%.4f, k=%.4f, w=%.4f", offset_i, offset_j,
+                   offset_k, offset_w);
+            DEBUGF(Logger::DBG_DEBUG, "IMU Sync: New Offsets (deg): Roll=%.2f, Pitch=%.2f, Yaw=%.2f", RAD_TO_DEG(roll),
+                   RAD_TO_DEG(pitch), RAD_TO_DEG(yaw));
+
+            // Step 8: Trigger a full recalculation with the new offsets using the last raw sensor data.
+            SetOrientationData(last_raw_q_i, last_raw_q_j, last_raw_q_k, last_raw_q_w);
             return true;
         });
         return true;
@@ -498,18 +630,17 @@ void IMU::RecalculateAstroCoordinates()
     }
     else // Alt-Az calculation
     {
-        // For Alt-Az, we must convert the ENU horizontal_vector to the NWU
-        // (North, West, Up) frame expected by the support function.
-        INDI::AlignmentSubsystem::TelescopeDirectionVector nwu_vector(horizontal_vector.y, -horizontal_vector.x,
-                horizontal_vector.z);
-
-        // For Alt-Az, we just need to convert the horizontal_vector to spherical coordinates.
+        // For Alt-Az, the AltitudeAzimuthFromTelescopeDirectionVector function expects a vector in the
+        // NWU (North-West-Up) frame. The imu_vector is already in the correct IMU frame, which should be NWU
+        // if the user has selected it.
         INDI::IHorizontalCoordinates horiz_coords;
         INDI::AlignmentSubsystem::TelescopeDirectionVectorSupportFunctions tdv_functions;
-        tdv_functions.AltitudeAzimuthFromTelescopeDirectionVector(nwu_vector, horiz_coords);
+        tdv_functions.AltitudeAzimuthFromTelescopeDirectionVector(imu_vector, horiz_coords);
 
         AstroCoordinatesNP[AXIS1].setValue(horiz_coords.azimuth);
         AstroCoordinatesNP[AXIS2].setValue(horiz_coords.altitude);
+        DEBUGF(Logger::DBG_DEBUG, "IMU: NWU Vector for Alt/Az calc: X=%.4f, Y=%.4f, Z=%.4f", imu_vector.x, imu_vector.y,
+               imu_vector.z);
         DEBUGF(Logger::DBG_DEBUG, "IMU: Calculated Az=%.2f deg, Alt=%.2f deg", horiz_coords.azimuth, horiz_coords.altitude);
     }
 
@@ -521,48 +652,73 @@ void IMU::RecalculateAstroCoordinates()
 // Implement virtual functions from IMUInterface
 bool IMU::SetOrientationData(double i, double j, double k, double w)
 {
-    // Log raw quaternion values
-    DEBUGF(Logger::DBG_DEBUG, "IMU: Raw Quaternion: i=%.4f, j=%.4f, k=%.4f, w=%.4f", i, j, k, w);
+    // Store raw quaternion values from the sensor
+    last_raw_q_i = i;
+    last_raw_q_j = j;
+    last_raw_q_k = k;
+    last_raw_q_w = w;
 
-    double rawRollRad, rawPitchRad, rawYawRad;
-    QuaternionToEuler(i, j, k, w, rawRollRad, rawPitchRad, rawYawRad);
+    DEBUGF(Logger::DBG_DEBUG, "IMU: Raw Quaternion: i=%.4f, j=%.4f, k=%.4f, w=%.4f", i, j, k, w);
 
     // Get multipliers and offsets from properties
     double rollMultiplier  = OrientationAdjustmentsNP[ROLL_MULTIPLIER].getValue();
     double pitchMultiplier = OrientationAdjustmentsNP[PITCH_MULTIPLIER].getValue();
     double yawMultiplier   = OrientationAdjustmentsNP[YAW_MULTIPLIER].getValue();
-    double rollOffset      = OrientationAdjustmentsNP[ROLL_OFFSET].getValue() * M_PI / 180.0; // Convert offset to radians
-    double pitchOffset     = OrientationAdjustmentsNP[PITCH_OFFSET].getValue() * M_PI / 180.0;
-    double yawOffset       = OrientationAdjustmentsNP[YAW_OFFSET].getValue() * M_PI / 180.0;
-    double magneticDeclinationRad = MagneticDeclinationNP[0].getValue() * M_PI / 180.0; // Convert to radians
+    double rollOffset      = DEG_TO_RAD(OrientationAdjustmentsNP[ROLL_OFFSET].getValue());
+    double pitchOffset     = DEG_TO_RAD(OrientationAdjustmentsNP[PITCH_OFFSET].getValue());
+    double yawOffset       = DEG_TO_RAD(OrientationAdjustmentsNP[YAW_OFFSET].getValue());
+    double magneticDeclinationRad = DEG_TO_RAD(MagneticDeclinationNP[0].getValue());
 
-    // Apply adjustments
-    double adjustedRollRad  = rawRollRad * rollMultiplier + rollOffset;
-    double adjustedPitchRad = rawPitchRad * pitchMultiplier + pitchOffset;
-    double adjustedYawRad   = rawYawRad * yawMultiplier + yawOffset + magneticDeclinationRad;
+    // Convert raw quaternion to Euler angles to apply multipliers
+    double rawRollRad, rawPitchRad, rawYawRad;
+    QuaternionToEuler(i, j, k, w, rawRollRad, rawPitchRad, rawYawRad);
 
-    // Convert adjusted radians to degrees for INDI properties
-    double adjustedRollDeg  = adjustedRollRad * 180.0 / M_PI;
-    double adjustedPitchDeg = adjustedPitchRad * 180.0 / M_PI;
-    double adjustedYawDeg   = adjustedYawRad * 180.0 / M_PI;
+    // Apply multipliers
+    rawRollRad *= rollMultiplier;
+    rawPitchRad *= pitchMultiplier;
+    rawYawRad *= yawMultiplier;
 
-    // Log adjusted Euler angles
-    DEBUGF(Logger::DBG_DEBUG, "IMU: Adjusted Euler Angles (deg): Roll=%.2f, Pitch=%.2f, Yaw=%.2f", adjustedRollDeg,
-           adjustedPitchDeg, adjustedYawDeg);
+    // Convert modified Euler angles back to a temporary quaternion
+    double temp_i, temp_j, temp_k, temp_w;
+    EulerToQuaternion(rawRollRad, rawPitchRad, rawYawRad, temp_i, temp_j, temp_k, temp_w);
 
-    // Update INDI Orientation properties (Roll, Pitch, Yaw in degrees)
-    OrientationNP[ORIENTATION_ROLL].setValue(rawRollRad * 180.0 / M_PI);
-    OrientationNP[ORIENTATION_PITCH].setValue(rawPitchRad * 180.0 / M_PI);
-    OrientationNP[ORIENTATION_YAW].setValue(rawYawRad * 180.0 / M_PI);
+    // Convert Euler offsets to an offset quaternion
+    double offset_i, offset_j, offset_k, offset_w;
+    EulerToQuaternion(rollOffset, pitchOffset, yawOffset, offset_i, offset_j, offset_k, offset_w);
+
+    // Convert magnetic declination to a quaternion
+    double mag_i, mag_j, mag_k, mag_w;
+    EulerToQuaternion(0, 0, magneticDeclinationRad, mag_i, mag_j, mag_k, mag_w);
+
+    // Apply the offset and magnetic declination to the raw quaternion using quaternion multiplication.
+    // adjusted_q = offset_q * temp_q (where temp_q is the multiplier-adjusted quaternion)
+    double adjusted_w = offset_w * temp_w - offset_i * temp_i - offset_j * temp_j - offset_k * temp_k;
+    double adjusted_i = offset_w * temp_i + offset_i * temp_w + offset_j * temp_k - offset_k * temp_j;
+    double adjusted_j = offset_w * temp_j - offset_i * temp_k + offset_j * temp_w + offset_k * temp_i;
+    double adjusted_k = offset_w * temp_k + offset_i * temp_j - offset_j * temp_i + offset_k * temp_w;
+
+    // final_q = mag_q * adjusted_q
+    last_q_w = mag_w * adjusted_w - mag_i * adjusted_i - mag_j * adjusted_j - mag_k * adjusted_k;
+    last_q_i = mag_w * adjusted_i + mag_i * adjusted_w + mag_j * adjusted_k - mag_k * adjusted_j;
+    last_q_j = mag_w * adjusted_j - mag_i * adjusted_k + mag_j * adjusted_w + mag_k * adjusted_i;
+    last_q_k = mag_w * adjusted_k + mag_i * adjusted_j - mag_j * adjusted_i + mag_k * adjusted_w;
+
+    // For logging, convert the final adjusted quaternion back to Euler angles.
+    double adjustedRollRad, adjustedPitchRad, adjustedYawRad;
+    QuaternionToEuler(last_q_i, last_q_j, last_q_k, last_q_w, adjustedRollRad, adjustedPitchRad, adjustedYawRad);
+    DEBUGF(Logger::DBG_DEBUG, "IMU: Adjusted Euler Angles (deg): Roll=%.2f, Pitch=%.2f, Yaw=%.2f",
+           RAD_TO_DEG(adjustedRollRad), RAD_TO_DEG(adjustedPitchRad), RAD_TO_DEG(adjustedYawRad));
+
+    // Update INDI Orientation properties with raw (unadjusted) data
+    QuaternionToEuler(i, j, k, w, rawRollRad, rawPitchRad, rawYawRad);
+    OrientationNP[ORIENTATION_ROLL].setValue(RAD_TO_DEG(rawRollRad));
+    OrientationNP[ORIENTATION_PITCH].setValue(RAD_TO_DEG(rawPitchRad));
+    OrientationNP[ORIENTATION_YAW].setValue(RAD_TO_DEG(rawYawRad));
     OrientationNP[ORIENTATION_QUATERNION_W].setValue(w);
     OrientationNP.setState(IPS_OK);
     OrientationNP.apply();
 
-    // Store adjusted quaternion values for recalculation
-    // Convert adjusted Euler angles back to a quaternion for storage
-    EulerToQuaternion(adjustedRollRad, adjustedPitchRad, adjustedYawRad, last_q_i, last_q_j, last_q_k, last_q_w);
-
-    // Recalculate astronomical coordinates
+    // Recalculate astronomical coordinates using the new, correctly adjusted quaternion.
     RecalculateAstroCoordinates();
 
     return true;

@@ -198,6 +198,12 @@ class IMU : public DefaultDevice, public IMUInterface
         double last_q_k = 0.0;
         double last_q_w = 1.0; // Default to identity quaternion
 
+        // Last known raw quaternion values from the sensor
+        double last_raw_q_i = 0.0;
+        double last_raw_q_j = 0.0;
+        double last_raw_q_k = 0.0;
+        double last_raw_q_w = 1.0; // Default to identity quaternion
+
     protected:
         // Function to recalculate astronomical coordinates using last known quaternion
         void RecalculateAstroCoordinates();
