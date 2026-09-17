@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <memory>
+#include <algorithm>
 #include <unistd.h>
 
 // We declare an auto pointer to domeSim.
@@ -37,6 +38,7 @@ DomeSim::DomeSim()
     prev_alt        = 0;
 
     SetDomeCapability(DOME_CAN_ABORT | DOME_CAN_ABS_MOVE | DOME_CAN_REL_MOVE | DOME_CAN_PARK | DOME_HAS_SHUTTER);
+    SetDomeMorphology(MORPH_ROTATING);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,7 +46,31 @@ DomeSim::DomeSim()
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 bool DomeSim::initProperties()
 {
+    // The morphology must be known before the base class initializes its shutter properties
+    // so it can size them (single shutter vs multi-leaf + partial aperture).
+    MorphologySP[MORPH_SIM_STANDARD].fill("DOME_MORPHOLOGY_STANDARD", "Standard", ISS_ON);
+    MorphologySP[MORPH_SIM_CLAMSHELL].fill("DOME_MORPHOLOGY_CLAMSHELL", "Clamshell", ISS_OFF);
+    MorphologySP.fill(getDeviceName(), "DOME_MORPHOLOGY", "Morphology", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 60,
+                      IPS_IDLE);
+    MorphologySP.load();
+
+    m_Clamshell = MorphologySP[MORPH_SIM_CLAMSHELL].getState() == ISS_ON;
+    if (m_Clamshell)
+    {
+        SetDomeMorphology(MORPH_CLAMSHELL);
+        SetShutterCount(2);
+        capability |= DOME_CAN_PARTIAL_SHUTTER;
+    }
+    else
+    {
+        SetDomeMorphology(MORPH_ROTATING);
+    }
+
     INDI::Dome::initProperties();
+
+    const int count = getShutterCount();
+    m_LeafAperture.assign(count, 0);
+    m_LeafTarget.assign(count, 0);
 
     SpeedNP[Dome].fill("DOME", "Dome (deg/s)", "%.2f", 0.1, 10, 1, 5);
     SpeedNP[Shutter].fill("SHUTTER", "Shutter (m/s)", "%.2f", 0.01, 1, 0.1, 0.1);
@@ -98,11 +124,13 @@ bool DomeSim::updateProperties()
 
     if (isConnected())
     {
+        defineProperty(MorphologySP);
         defineProperty(SpeedNP);
         SetupParms();
     }
     else
     {
+        deleteProperty(MorphologySP);
         deleteProperty(SpeedNP);
     }
 
@@ -144,6 +172,27 @@ bool DomeSim::ISNewNumber(const char * dev, const char * name, double values[], 
     }
 
     return INDI::Dome::ISNewNumber(dev, name, values, names, n);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+bool DomeSim::ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n)
+{
+    if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
+    {
+        if (MorphologySP.isNameMatch(name))
+        {
+            MorphologySP.update(states, names, n);
+            MorphologySP.setState(IPS_OK);
+            MorphologySP.apply();
+            saveConfig(MorphologySP);
+            LOG_INFO("Driver must be restarted for this change to take effect.");
+            return true;
+        }
+    }
+
+    return INDI::Dome::ISNewSwitch(dev, name, states, names, n);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +253,47 @@ void DomeSim::TimerHit()
 
             if (getDomeState() == DOME_UNPARKING)
                 SetParked(false);
+        }
+    }
+
+    // Clamshell: advance each leaf toward its target (10% per poll) and report the live
+    // aperture in DOME_APERTURE.
+    if (m_Clamshell && HasShutter())
+    {
+        bool changed = false;
+        for (int i = 0; i < getShutterCount(); i++)
+        {
+            if (getShutterState(i) != SHUTTER_MOVING)
+                continue;
+
+            const double target = m_LeafTarget[i];
+            const double step   = 10.0;
+            double ap           = m_LeafAperture[i];
+
+            if (std::abs(target - ap) <= step)
+            {
+                ap = target;
+                setShutterState(i, ap > 0 ? SHUTTER_OPENED : SHUTTER_CLOSED);
+                LOGF_INFO("Shutter %d reached %.0f%% aperture.", i + 1, ap);
+            }
+            else
+                ap += (target > ap ? step : -step);
+
+            m_LeafAperture[i] = ap;
+            changed           = true;
+        }
+
+        if (changed)
+        {
+            for (int i = 0; i < getShutterCount(); i++)
+                DomeApertureNP[i].setValue(m_LeafAperture[i]);
+
+            bool anyMoving = false;
+            for (int i = 0; i < getShutterCount(); i++)
+                anyMoving = anyMoving || (getShutterState(i) == SHUTTER_MOVING);
+
+            DomeApertureNP.setState(anyMoving ? IPS_BUSY : IPS_OK);
+            DomeApertureNP.apply();
         }
     }
 
@@ -299,6 +389,37 @@ IPState DomeSim::ControlShutter(ShutterOperation operation)
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ///
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+IPState DomeSim::SetAperture(int index, double percent)
+{
+    if (index < 0 || index >= getShutterCount())
+        return IPS_ALERT;
+
+    percent = std::max(0.0, std::min(100.0, percent));
+
+    if (std::abs(percent - m_LeafAperture[index]) < 1)
+    {
+        setShutterState(index, percent > 0 ? SHUTTER_OPENED : SHUTTER_CLOSED);
+        return IPS_OK;
+    }
+
+    m_LeafTarget[index]    = percent;
+    setShutterState(index, SHUTTER_MOVING);
+    return IPS_BUSY;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+double DomeSim::GetAperture(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(m_LeafAperture.size()))
+        return -1;
+    return m_LeafAperture[index];
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
 bool DomeSim::Abort()
 {
     // If we abort while in the middle of opening/closing shutter, alert.
@@ -338,6 +459,7 @@ bool DomeSim::SetDefaultPark()
 bool DomeSim::saveConfigItems(FILE * fp)
 {
     Dome::saveConfigItems(fp);
+    MorphologySP.save(fp);
     SpeedNP.save(fp);
     return true;
 }

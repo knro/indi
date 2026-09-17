@@ -27,6 +27,7 @@
 #include "inditimer.h"
 
 #include <string>
+#include <vector>
 
 // Defines a point in a 3 dimension space
 typedef struct
@@ -151,6 +152,16 @@ class Dome : public DefaultDevice
             SHUTTER_ERROR       /*!< Shutter status is unknown */
         } ShutterState;
 
+        /** \typedef DomeMorphology
+                \brief Physical morphology of the enclosure.
+            */
+        typedef enum
+        {
+            MORPH_ROTATING,     /*!< Classic rotating dome with a single aperture. */
+            MORPH_ROLLOFF,      /*!< Linear roll-off roof; opening the roof equals unparking. */
+            MORPH_CLAMSHELL,    /*!< One or more hinged leaves (clamshell). */
+        } DomeMorphology;
+
         enum
         {
             DOME_CAN_ABORT          = 1 << 0, /*!< Can the dome motion be aborted? */
@@ -160,7 +171,9 @@ class Dome : public DefaultDevice
             DOME_CAN_SYNC           = 1 << 4, /*!< Can the dome sync to arbitrary position? */
             DOME_HAS_SHUTTER        = 1 << 5, /*!< Does the dome has a shutter than can be opened and closed electronically? */
             DOME_HAS_VARIABLE_SPEED = 1 << 6, /*!< Can the dome move in different configurable speeds? */
-            DOME_HAS_BACKLASH       = 1 << 7  /*!< Can the dome compensate for backlash? */
+            DOME_HAS_BACKLASH       = 1 << 7, /*!< Can the dome compensate for backlash? */
+            DOME_CAN_PARTIAL_SHUTTER = 1 << 8, /*!< Can the aperture/shutter be commanded to intermediate positions? */
+            DOME_HAS_MULTI_SHUTTER   = 1 << 9  /*!< Does the dome have more than one independently controllable shutter/leaf? */
         };
 
         /** \struct DomeConnection
@@ -277,6 +290,22 @@ class Dome : public DefaultDevice
         }
 
         /**
+         * @return True if the shutter/aperture can be commanded to intermediate positions
+         */
+        bool CanPartialShutter() const
+        {
+            return capability & DOME_CAN_PARTIAL_SHUTTER;
+        }
+
+        /**
+         * @return True if the dome has more than one independently controllable shutter/leaf
+         */
+        bool HasMultiShutter() const
+        {
+            return capability & DOME_HAS_MULTI_SHUTTER;
+        }
+
+        /**
              * @brief isLocked, is the dome currently locked?
              * @return True if lock status equals true, and TelescopeClosedLockTP is Telescope Locks.
              */
@@ -292,7 +321,28 @@ class Dome : public DefaultDevice
         {
             return m_ShutterState;
         }
+        /** \brief Return the state of the shutter/leaf at the given 0-based index. */
+        ShutterState getShutterState(int index) const;
         void setShutterState(const ShutterState &value);
+        /** \brief Set the state of a single shutter/leaf at the given 0-based index. */
+        void setShutterState(int index, const ShutterState &value);
+
+        /** \brief Return true if the leaf at index follows the aggregate Open/Close (DOME_SHUTTER) command. */
+        bool isShutterLinked(int index) const;
+
+        /** \brief Set the physical morphology of the enclosure. Must be called by the driver (e.g. in its constructor). */
+        void SetDomeMorphology(const DomeMorphology &value);
+        DomeMorphology GetDomeMorphology() const
+        {
+            return m_Morphology;
+        }
+
+        /** \brief Set the number of independently controllable shutters/leaves. Call before initProperties(). */
+        void SetShutterCount(int count);
+        int getShutterCount() const
+        {
+            return m_ShutterCount;
+        }
 
         IPState getMountState() const;
 
@@ -372,6 +422,20 @@ class Dome : public DefaultDevice
                         Return IPS_ALERT if there is an error.
              */
         virtual IPState ControlShutter(ShutterOperation operation);
+
+        /** \brief Control a single shutter/leaf identified by its 0-based index.
+             *  Multi-shutter drivers must override this. The default implementation rejects the request.
+             */
+        virtual IPState ControlShutter(int index, ShutterOperation operation);
+
+        /** \brief Open/close all shutters/leaves. Default implementation applies ControlShutter(index, operation) to every leaf. */
+        virtual IPState ControlAllShutters(ShutterOperation operation);
+
+        /** \brief Set the aperture of a shutter/leaf (0-100%). Default implementation rejects the request. */
+        virtual IPState SetAperture(int index, double percent);
+
+        /** \brief Return the aperture of a shutter/leaf (0-100%), or -1 if unknown. Default implementation returns -1. */
+        virtual double GetAperture(int index) const;
 
         /**
              * @brief getShutterStatusString
@@ -545,6 +609,24 @@ class Dome : public DefaultDevice
 
         INDI::PropertySwitch DomeShutterSP {2};
 
+        // @INDI_STANDARD_PROPERTY@
+        INDI::PropertyNumber DomeApertureNP {1};
+
+        // @INDI_STANDARD_PROPERTY@
+        INDI::PropertyNumber DomeShutterOpenPositionNP {1};
+
+        // @INDI_STANDARD_PROPERTY@
+        INDI::PropertySwitch DomeShutterLinkedSP {1};
+
+        // @INDI_STANDARD_PROPERTY@
+        INDI::PropertySwitch DomeTypeSP {3};
+        enum
+        {
+            DOME_TYPE_ROTATING,
+            DOME_TYPE_ROLLOFF,
+            DOME_TYPE_CLAMSHELL
+        };
+
         INDI::PropertySwitch ParkSP {2};
 
         INDI::PropertyNumber ParkPositionNP {1};
@@ -610,6 +692,9 @@ class Dome : public DefaultDevice
         // States
         DomeState m_DomeState;
         ShutterState m_ShutterState;
+        std::vector<ShutterState> m_ShutterStates;
+        DomeMorphology m_Morphology { MORPH_ROTATING };
+        int m_ShutterCount { 1 };
         IPState m_MountState;
 
         // Observer geographic coords. Snooped from mount driver.
@@ -626,6 +711,10 @@ class Dome : public DefaultDevice
     private:
         void processButton(const char * button_n, ISState state);
         void triggerSnoop(const char * driverName, const char * propertyName);
+        /** \brief Build the DOME_APERTURE and DOME_SHUTTER_LINKED vectors based on m_ShutterCount. */
+        void initializeShutterProperties();
+        /** \brief Recompute the aggregate DOME_SHUTTER state from the linked leaves. */
+        void syncAggregateShutterState();
         /**
          * @brief SyncParkStatus Update the state and switches for parking
          * @param isparked True if parked, false otherwise.

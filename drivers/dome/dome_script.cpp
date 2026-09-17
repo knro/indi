@@ -80,19 +80,22 @@ bool DomeScript::initProperties()
     ScriptsTP.fill(getDeviceName(), "SCRIPTS", "Scripts", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
     ScriptsTP.load();
 
-    // Dome Type
+    // Dome Type (driver-level read/write selector). The base class reflects this through the
+    // read-only standard DOME_TYPE property.
     TypeSP[Dome].fill("DOME", "Dome", ISS_ON);
     TypeSP[Rolloff].fill("ROLLOFF", "Roll off", ISS_OFF);
-    TypeSP.fill(getDeviceName(), "DOME_TYPE", "Type", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    TypeSP.fill(getDeviceName(), "DOME_MORPHOLOGY", "Type", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
     TypeSP.load();
 
     if (TypeSP[Dome].getState() == ISS_ON)
     {
+        SetDomeMorphology(MORPH_ROTATING);
         SetParkDataType(PARK_AZ);
         SetDomeCapability(DOME_CAN_PARK | DOME_CAN_ABORT | DOME_CAN_ABS_MOVE | DOME_HAS_SHUTTER);
     }
     else
     {
+        SetDomeMorphology(MORPH_ROLLOFF);
         SetParkDataType(PARK_NONE);
         SetDomeCapability(DOME_CAN_PARK | DOME_CAN_ABORT);
     }
@@ -155,6 +158,7 @@ bool DomeScript::ISNewSwitch(const char *dev, const char *name, ISState *states,
             TypeSP.update(states, names, n);
             TypeSP.setState(IPS_OK);
             TypeSP.apply();
+            SetDomeMorphology(TypeSP[Dome].getState() == ISS_ON ? MORPH_ROTATING : MORPH_ROLLOFF);
             saveConfig(TypeSP);
             LOG_INFO("Driver must be restarted for this change to take effect");
             return true;

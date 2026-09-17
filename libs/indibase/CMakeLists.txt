@@ -167,6 +167,7 @@ list(APPEND ${PROJECT_NAME}_SOURCES
     indioutputinterface.cpp
     indipowerinterface.cpp
     indidome.cpp
+    indidomerolloff.cpp
     indigps.cpp
     indiimu.cpp        
     indiweather.cpp
@@ -218,6 +219,7 @@ list(APPEND ${PROJECT_NAME}_HEADERS
     timer/indielapsedtimer.h
     thread/indisinglethreadpool.h
     indidome.h
+    indidomerolloff.h
     indigps.h
     indilightboxinterface.h
     indipacinterface.h

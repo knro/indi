@@ -595,6 +595,13 @@ bool DomePro2::getHardwareConfig()
             snprintf(configString, DRIVER_LEN, "%s", DomeHardware.at(index).c_str());
             VersionTP[VERSION_HARDWARE].setText(configString);
 
+            // Reflect the physical morphology reported by the hardware.
+            if (index == 0x0E)
+                SetDomeMorphology(MORPH_CLAMSHELL);
+            else if (index == 0x0F)
+                SetDomeMorphology(MORPH_ROLLOFF);
+            else
+                SetDomeMorphology(MORPH_ROTATING);
         }
         else
         {

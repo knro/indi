@@ -34,6 +34,7 @@
 
 #include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <wordexp.h>
 #include <pwd.h>
@@ -219,6 +220,18 @@ bool Dome::initProperties()
     DomeShutterSP[1].fill("SHUTTER_CLOSE", "Close", ISS_ON);
     DomeShutterSP.fill(getDeviceName(), "DOME_SHUTTER", "Shutter", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_OK);
 
+    // Optional multi-shutter/leaf aperture support (capability-gated)
+    initializeShutterProperties();
+
+    // @INDI_STANDARD_PROPERTY@ Informational: physical morphology of the enclosure (read-only, set by the driver)
+    DomeTypeSP[DOME_TYPE_ROTATING].fill("DOME_TYPE_ROTATING", "Rotating",
+                                        m_Morphology == MORPH_ROTATING ? ISS_ON : ISS_OFF);
+    DomeTypeSP[DOME_TYPE_ROLLOFF].fill("DOME_TYPE_ROLLOFF", "Roll-off",
+                                       m_Morphology == MORPH_ROLLOFF ? ISS_ON : ISS_OFF);
+    DomeTypeSP[DOME_TYPE_CLAMSHELL].fill("DOME_TYPE_CLAMSHELL", "Clamshell",
+                                         m_Morphology == MORPH_CLAMSHELL ? ISS_ON : ISS_OFF);
+    DomeTypeSP.fill(getDeviceName(), "DOME_TYPE", "Type", OPTIONS_TAB, IP_RO, ISR_1OFMANY, 60, IPS_OK);
+
     // @INDI_STANDARD_PROPERTY@
     ParkOptionSP[0].fill("PARK_CURRENT", "Current", ISS_OFF);
     ParkOptionSP[1].fill("PARK_DEFAULT", "Default", ISS_OFF);
@@ -289,7 +302,18 @@ bool Dome::updateProperties()
         {
             defineProperty(DomeShutterSP);
             defineProperty(ShutterParkPolicySP);
+
+            // Each shutter/leaf is controlled via its aperture (0-100%).
+            if (HasMultiShutter() || CanPartialShutter())
+                defineProperty(DomeApertureNP);
+
+            // Policy: which leaves follow the aggregate Open/Close command.
+            if (HasMultiShutter())
+                defineProperty(DomeShutterLinkedSP);
         }
+
+        // @INDI_STANDARD_PROPERTY@ Informational morphology of the enclosure
+        defineProperty(DomeTypeSP);
 
         //  Now we add our Dome specific stuff
         defineProperty(DomeMotionSP);
@@ -327,6 +351,10 @@ bool Dome::updateProperties()
             }
         }
 
+        // Default open position for shutters/leaves (Site Management), listed after the parking controls.
+        if (HasShutter() && CanPartialShutter())
+            defineProperty(DomeShutterOpenPositionNP);
+
         if (HasBacklash())
         {
             defineProperty(DomeBacklashSP);
@@ -339,7 +367,15 @@ bool Dome::updateProperties()
         {
             deleteProperty(DomeShutterSP);
             deleteProperty(ShutterParkPolicySP);
+
+            if (HasMultiShutter() || CanPartialShutter())
+                deleteProperty(DomeApertureNP);
+
+            if (HasMultiShutter())
+                deleteProperty(DomeShutterLinkedSP);
         }
+
+        deleteProperty(DomeTypeSP);
 
         deleteProperty(DomeMotionSP);
 
@@ -376,6 +412,9 @@ bool Dome::updateProperties()
                 deleteProperty(ParkOptionSP);
             }
         }
+
+        if (HasShutter() && CanPartialShutter())
+            deleteProperty(DomeShutterOpenPositionNP);
 
         if (HasBacklash())
         {
@@ -449,6 +488,57 @@ bool Dome::ISNewNumber(const char * dev, const char * name, double values[], cha
         {
             auto newPos = values[0];
             Dome::MoveRel(newPos);
+            return true;
+        }
+        else if (DomeApertureNP.isNameMatch(name))
+        {
+            DomeApertureNP.update(values, names, n);
+            IPState result = IPS_OK;
+            for (int i = 0; i < static_cast<int>(DomeApertureNP.count()); i++)
+            {
+                bool provided = false;
+                for (int k = 0; k < n; k++)
+                {
+                    if (DomeApertureNP[i].isNameMatch(names[k]))
+                    {
+                        provided = true;
+                        break;
+                    }
+                }
+                if (!provided)
+                    continue;
+
+                const auto rc = SetAperture(i, DomeApertureNP[i].getValue());
+                if (rc == IPS_ALERT)
+                    result = IPS_ALERT;
+                else if (rc == IPS_BUSY && result != IPS_ALERT)
+                    result = IPS_BUSY;
+            }
+
+            // A partial update must not clear BUSY while another leaf is still in motion.
+            if (result != IPS_ALERT)
+            {
+                for (int i = 0; i < getShutterCount(); i++)
+                {
+                    if (getShutterState(i) == SHUTTER_MOVING)
+                    {
+                        result = IPS_BUSY;
+                        break;
+                    }
+                }
+            }
+
+            DomeApertureNP.setState(result);
+            DomeApertureNP.apply();
+            return true;
+        }
+        else if (DomeShutterOpenPositionNP.isNameMatch(name))
+        {
+            DomeShutterOpenPositionNP.update(values, names, n);
+            DomeShutterOpenPositionNP.setState(IPS_OK);
+            DomeShutterOpenPositionNP.apply();
+            // Persist the default open position used by the Open command.
+            saveConfig(DomeShutterOpenPositionNP);
             return true;
         }
         else if (DomeMeasurementsNP.isNameMatch(name))
@@ -655,6 +745,20 @@ bool Dome::ISNewSwitch(const char * dev, const char * name, ISState * states, ch
                     }
                 }
             }
+        }
+        ////////////////////////////////////////////
+        // Linked Shutters policy (which leaves follow Open/Close)
+        ////////////////////////////////////////////
+        else if (DomeShutterLinkedSP.isNameMatch(name))
+        {
+            DomeShutterLinkedSP.update(states, names, n);
+            DomeShutterLinkedSP.setState(IPS_OK);
+            DomeShutterLinkedSP.apply();
+            saveConfig(DomeShutterLinkedSP);
+
+            // The aggregate state now depends on which leaves are linked.
+            syncAggregateShutterState();
+            return true;
         }
         ////////////////////////////////////////////
         // Parking Switch
@@ -1101,6 +1205,12 @@ bool Dome::saveConfigItems(FILE * fp)
     if (HasShutter())
     {
         ShutterParkPolicySP.save(fp);
+
+        if (HasMultiShutter())
+            DomeShutterLinkedSP.save(fp);
+
+        if (CanPartialShutter())
+            DomeShutterOpenPositionNP.save(fp);
     }
 
     controller->saveConfigItems(fp);
@@ -1209,6 +1319,177 @@ void Dome::setShutterState(const Dome::ShutterState &value)
 
     DomeShutterSP.apply();
     m_ShutterState = value;
+
+    // Keep the per-leaf states in sync with the aggregate state.
+    const auto count = static_cast<size_t>(m_ShutterCount < 1 ? 1 : m_ShutterCount);
+    m_ShutterStates.assign(count, value);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+Dome::ShutterState Dome::getShutterState(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(m_ShutterStates.size()))
+        return SHUTTER_UNKNOWN;
+    return m_ShutterStates[index];
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void Dome::setShutterState(int index, const Dome::ShutterState &value)
+{
+    if (index < 0 || index >= static_cast<int>(m_ShutterStates.size()))
+        return;
+
+    // Single shutter: use the aggregate representation.
+    if (!HasMultiShutter())
+    {
+        setShutterState(value);
+        return;
+    }
+
+    m_ShutterStates[index] = value;
+    syncAggregateShutterState();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+bool Dome::isShutterLinked(int index) const
+{
+    if (!HasMultiShutter())
+        return true;
+
+    if (index < 0 || index >= static_cast<int>(DomeShutterLinkedSP.count()))
+        return true;
+
+    return DomeShutterLinkedSP[index].getState() == ISS_ON;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void Dome::syncAggregateShutterState()
+{
+    if (!HasMultiShutter())
+        return;
+
+    // The aggregate OPEN/CLOSE only reflects the leaves that are linked to it.
+    bool allOpen = true, allClosed = true, anyMoving = false;
+    int linked = 0;
+
+    for (int i = 0; i < m_ShutterCount; i++)
+    {
+        if (!isShutterLinked(i))
+            continue;
+
+        linked++;
+        const auto state = getShutterState(i);
+        allOpen   = allOpen && (state == SHUTTER_OPENED);
+        allClosed = allClosed && (state == SHUTTER_CLOSED);
+        anyMoving = anyMoving || (state == SHUTTER_MOVING);
+    }
+
+    if (linked == 0)
+        return;
+
+    if (allOpen)
+    {
+        setShutterState(SHUTTER_OPENED);
+    }
+    else if (allClosed)
+    {
+        setShutterState(SHUTTER_CLOSED);
+    }
+    else if (!anyMoving)
+    {
+        // Mixed settled states: neither OPEN nor CLOSE is accurate for the aggregate.
+        DomeShutterSP.reset();
+        DomeShutterSP.setState(IPS_IDLE);
+        DomeShutterSP.apply();
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void Dome::SetShutterCount(int count)
+{
+    m_ShutterCount = count < 1 ? 1 : count;
+
+    if (m_ShutterCount > 1)
+        capability |= DOME_HAS_MULTI_SHUTTER;
+    else
+        capability &= ~DOME_HAS_MULTI_SHUTTER;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void Dome::initializeShutterProperties()
+{
+    if (m_ShutterCount < 1)
+        m_ShutterCount = 1;
+
+    m_ShutterStates.assign(static_cast<size_t>(m_ShutterCount), SHUTTER_UNKNOWN);
+
+    // Per-leaf aperture (0-100%). This is the live/commanded position.
+    DomeApertureNP.resize(static_cast<size_t>(m_ShutterCount));
+    for (int i = 0; i < m_ShutterCount; i++)
+    {
+        char name[MAXINDINAME];
+        char label[MAXINDILABEL];
+        snprintf(name, sizeof(name), "APERTURE_%d", i + 1);
+        snprintf(label, sizeof(label), "Aperture %d (%%)", i + 1);
+        DomeApertureNP[i].fill(name, label, "%.f", 0, 100, 1, 0);
+    }
+    DomeApertureNP.fill(getDeviceName(), "DOME_APERTURE", "Aperture", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+
+    // Default open position per shutter/leaf, used by the Open command (persisted).
+    DomeShutterOpenPositionNP.resize(static_cast<size_t>(m_ShutterCount));
+    for (int i = 0; i < m_ShutterCount; i++)
+    {
+        char name[MAXINDINAME];
+        char label[MAXINDILABEL];
+        snprintf(name, sizeof(name), "SHUTTER_OPEN_POSITION_%d", i + 1);
+        snprintf(label, sizeof(label), "Shutter %d (%%)", i + 1);
+        DomeShutterOpenPositionNP[i].fill(name, label, "%.f", 0, 100, 1, 100);
+    }
+    DomeShutterOpenPositionNP.fill(getDeviceName(), "DOME_SHUTTER_OPEN_POSITION", "Default Open Shutter Position",
+                                   SITE_TAB, IP_RW, 60, IPS_OK);
+    DomeShutterOpenPositionNP.load();
+
+    // Per-leaf policy: which leaves follow the aggregate Open/Close command.
+    DomeShutterLinkedSP.resize(static_cast<size_t>(m_ShutterCount));
+    for (int i = 0; i < m_ShutterCount; i++)
+    {
+        char name[MAXINDINAME];
+        char label[MAXINDILABEL];
+        snprintf(name, sizeof(name), "SHUTTER_LINKED_%d", i + 1);
+        snprintf(label, sizeof(label), "Shutter %d", i + 1);
+        DomeShutterLinkedSP[i].fill(name, label, ISS_ON);
+    }
+    DomeShutterLinkedSP.fill(getDeviceName(), "DOME_SHUTTER_LINKED", "Linked Shutters", MAIN_CONTROL_TAB, IP_RW,
+                             ISR_NOFMANY, 60, IPS_OK);
+    DomeShutterLinkedSP.load();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///
+////////////////////////////////////////////////////////////////////////////////////////////////////
+void Dome::SetDomeMorphology(const Dome::DomeMorphology &value)
+{
+    m_Morphology = value;
+
+    DomeTypeSP[DOME_TYPE_ROTATING].setState(value == MORPH_ROTATING ? ISS_ON : ISS_OFF);
+    DomeTypeSP[DOME_TYPE_ROLLOFF].setState(value == MORPH_ROLLOFF ? ISS_ON : ISS_OFF);
+    DomeTypeSP[DOME_TYPE_CLAMSHELL].setState(value == MORPH_CLAMSHELL ? ISS_ON : ISS_OFF);
+    DomeTypeSP.setState(IPS_OK);
+
+    if (DomeTypeSP.getRegistered())
+        DomeTypeSP.apply();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2268,7 +2549,7 @@ IPState Dome::ControlShutter(ShutterOperation operation)
         return DomeShutterSP.getState();
     }
 
-    DomeShutterSP.setState(ControlShutter(operation));
+    DomeShutterSP.setState(HasMultiShutter() ? ControlAllShutters(operation) : ControlShutter(operation));
 
     if (DomeShutterSP.getState() == IPS_OK)
     {
@@ -2290,6 +2571,68 @@ IPState Dome::ControlShutter(ShutterOperation operation)
     LOGF_INFO("Shutter failed to %s.", (operation == 0 ? "open" : "close"));
     DomeShutterSP.apply();
     return IPS_ALERT;
+}
+
+IPState Dome::ControlShutter(int index, ShutterOperation operation)
+{
+    INDI_UNUSED(index);
+    INDI_UNUSED(operation);
+    LOG_ERROR("Dome does not support controlling individual shutters/leaves.");
+    return IPS_ALERT;
+}
+
+IPState Dome::ControlAllShutters(ShutterOperation operation)
+{
+    if (!HasMultiShutter())
+        return ControlShutter(operation);
+
+    IPState result = IPS_OK;
+    bool anyCommanded = false;
+    for (int i = 0; i < m_ShutterCount; i++)
+    {
+        // Leaves that are not linked to the aggregate command are left untouched.
+        if (!isShutterLinked(i))
+            continue;
+
+        anyCommanded = true;
+
+        IPState rc = IPS_ALERT;
+        if (CanPartialShutter())
+        {
+            // Open each leaf to its default open position; close fully.
+            const double target = (operation == SHUTTER_OPEN) ? DomeShutterOpenPositionNP[i].getValue() : 0;
+            rc = SetAperture(i, target);
+        }
+        else
+            rc = ControlShutter(i, operation);
+
+        if (rc == IPS_ALERT)
+            result = IPS_ALERT;
+        else if (rc == IPS_BUSY && result != IPS_ALERT)
+            result = IPS_BUSY;
+    }
+
+    if (!anyCommanded)
+    {
+        LOG_WARN("No shutters are linked to the Open/Close command.");
+        return IPS_ALERT;
+    }
+
+    return result;
+}
+
+IPState Dome::SetAperture(int index, double percent)
+{
+    INDI_UNUSED(index);
+    INDI_UNUSED(percent);
+    LOG_ERROR("Dome does not support partial aperture control.");
+    return IPS_ALERT;
+}
+
+double Dome::GetAperture(int index) const
+{
+    INDI_UNUSED(index);
+    return -1;
 }
 
 IPState Dome::Park()

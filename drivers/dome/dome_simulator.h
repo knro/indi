@@ -42,6 +42,7 @@ public:
     virtual bool saveConfigItems(FILE *fp) override;
 
     virtual bool ISNewNumber(const char * dev, const char * name, double values[], char * names[], int n) override;
+    virtual bool ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n) override;
 
 protected:
     bool Connect() override;
@@ -55,6 +56,8 @@ protected:
     virtual IPState Park() override;
     virtual IPState UnPark() override;
     virtual IPState ControlShutter(ShutterOperation operation) override;
+    virtual IPState SetAperture(int index, double percent) override;
+    virtual double GetAperture(int index) const override;
     virtual bool Abort() override;
 
     // Parking
@@ -72,5 +75,17 @@ private:
         Dome,
         Shutter
     };
+
+    // Morphology selection: Standard (single shutter) or Clamshell (two leaves + partial aperture)
+    INDI::PropertySwitch MorphologySP {2};
+    enum
+    {
+        MORPH_SIM_STANDARD,
+        MORPH_SIM_CLAMSHELL
+    };
+    bool m_Clamshell { false };
+    std::vector<double> m_LeafAperture;
+    std::vector<double> m_LeafTarget;
+
     bool SetupParms();
 };
