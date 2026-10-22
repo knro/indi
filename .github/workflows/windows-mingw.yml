@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - { sys: mingw64, env: x86_64 }
+          - { sys: ucrt64, env: ucrt-x86_64 }
 #         - { sys: mingw32, env: i686 }
 
     defaults:
@@ -46,7 +46,6 @@ jobs:
           base-devel
           mingw-w64-${{matrix.env}}-cmake
           mingw-w64-${{matrix.env}}-gcc
-          mingw-w64-${{matrix.env}}-libnova
           zlib-devel
 
     - name: Get INDI Sources
